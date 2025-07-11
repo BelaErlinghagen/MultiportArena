@@ -1,0 +1,6 @@
+{
+    "ProtocolName": "test",
+    "NumberOfTrials": 10,
+    "RewardDuration_ms": 500,
+    "Comments": ""
+}
