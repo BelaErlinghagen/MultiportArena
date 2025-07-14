@@ -1,6 +1,10 @@
 {
     "MouseID": "test",
-    "Age": "test",
-    "Genotype": "test",
-    "Notes": ""
+    "relay_sessions": {
+        "session1": [
+            null,
+            null
+        ]
+    },
+    "Notes": "test"
 }
