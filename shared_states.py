@@ -16,6 +16,9 @@ remembered_relays = {
 data_buffers = [[] for _ in range(16)]  # Support for 16 sensors
 timestamps = [[] for _ in range(16)]
 
+current_session_name = "session1"
+current_mouse_file = None
+current_mouse_data = {}
 temp_mouse_data = {}
 
 temp_protocol_data = {}

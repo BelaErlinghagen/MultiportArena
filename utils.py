@@ -1,10 +1,13 @@
 import dearpygui.dearpygui as dpg
-from shared_states import buttons_trials, buttons_lickports2, buttons_lickports1, remembered_relays, active_theme, ser1, ser2, label_table, temp_mouse_data, temp_protocol_data, trial_labels
+from shared_states import (buttons_trials, buttons_lickports2, buttons_lickports1, remembered_relays, active_theme, ser1, ser2, 
+                           label_table, temp_mouse_data, temp_protocol_data, trial_labels, timestamps, current_mouse_file, current_mouse_data,
+                           current_session_name)
 import ctypes
 import os
 import json
 import time
 import serial
+
 
 ### serial connection functions
 
@@ -107,47 +110,47 @@ def toggle_trial_button(sender, button_dict, active_theme, ser1, ser2):
     
 
 def toggle_lickport_button(sender, button_dict, port_label, active_theme):
-    """Toggle lickport relay buttons, prevent overlap between groups and send correct command."""
-    gui_relay_number = int(sender.split("_")[1])
+    global current_mouse_data, current_mouse_file
 
-    # Determine other port and tag
+    gui_relay_number = int(sender.split("_")[1])
     other_dict = buttons_lickports2 if button_dict is buttons_lickports1 else buttons_lickports1
     other_port = "2" if port_label == "1" else "1"
     conflicting_tag = f"button{other_port}_{gui_relay_number}"
 
-    # Block if the same relay is active on the other group
     if other_dict.get(conflicting_tag, {}).get("checked"):
         print(f"[BLOCKED] Relay {gui_relay_number} is already active in the other group.")
         return
 
-    # Toggle logic
     for tag, info in button_dict.items():
         if tag != sender:
             info["checked"] = False
             dpg.set_value(tag, False)
             dpg.bind_item_theme(tag, None)
         else:
-            # Toggle on
             info["checked"] = True
             dpg.set_value(tag, True)
             dpg.bind_item_theme(tag, active_theme)
-
-            # Track relay assignment
             remembered_relays[port_label] = tag
 
-            # Compute actual relay number for Arduino
+            # Send command to Arduino
             if gui_relay_number <= 8:
-                command = f"{gui_relay_number}"
-                send_serial_command(ser1, command)
-            elif gui_relay_number > 8:
-                command = f"{gui_relay_number-8}"
-                send_serial_command(ser2, command)
+                send_serial_command(ser1, f"{gui_relay_number}")
+            else:
+                send_serial_command(ser2, f"{gui_relay_number - 8}")
 
-            
-            print(remembered_relays)
+            # Append relay state with timestamp to current_mouse_data
+            if current_mouse_data and current_mouse_file:
+                relay_sessions = current_mouse_data.setdefault("relay_sessions", {})
+                timestamp = timestamp = timestamps[0][-1] if timestamps[0] else time.strftime("%Y-%m-%d %H:%M:%S")
+                entry = [remembered_relays.get('1'), remembered_relays.get('2'), timestamp]
+                relay_sessions.setdefault(current_session_name, []).append(entry)
+                # Save back to disk
+                with open(current_mouse_file, "w") as f:
+                    json.dump(current_mouse_data, f, indent=4)
+
+                print(f"Relay state saved: {entry}")
 
 ### GUI functions
-
 def shift_data_window(data_list, max_length):
     """Keep the data list within the maximum number of elements."""
     if len(data_list) > max_length:
@@ -185,15 +188,18 @@ def check_ready_state():
 ### File Management
 
 def mouse_file_selected(sender, app_data):
-        path = app_data['file_path_name']
-        if path.endswith(".json"):
-            dpg.set_value("mouse_file_path", path)
+        global current_mouse_file, current_mouse_data
+
+        mouse_file = app_data['file_path_name']
+        current_mouse_file = mouse_file
+        if mouse_file.endswith(".json"):
+            dpg.set_value("mouse_file_path", mouse_file)
 
         # Load the JSON content
-            with open(path, "r") as f:
+            with open(mouse_file, "r") as f:
                 global current_mouse_data
                 current_mouse_data = json.load(f)
-
+            dpg.configure_item("session_prompt_popup", show=True)
             relay_sessions = current_mouse_data.get("relay_sessions", {})
             if relay_sessions:
                 last_session = sorted(relay_sessions.keys(), key=lambda x: int(x.replace("session", "")))[-1]
@@ -208,54 +214,81 @@ def mouse_file_selected(sender, app_data):
             else:
                 print("No relay session history found.")
 
-        # Prepare next session name
-        next_session_number = 1
-        if relay_sessions:
-            last_num = int(last_session.replace("session", ""))
-            next_session_number = last_num + 1
-        current_mouse_data.setdefault("relay_sessions", {})
-        current_mouse_data["relay_sessions"][f"session{next_session_number}"] = [None, None]
-
         print(f"Loaded remembered_relays: {remembered_relays}")
         check_ready_state()
 
 
-def finalize_mouse_file(temp_mouse_data, overwrite=False):
-        mouse_id = temp_mouse_data["MouseID"]
-        filename = f"Mouse_{mouse_id}.json"
-        if not overwrite and os.path.exists(filename):
-            dpg.configure_item("mouse_overwrite_popup", show=False)
-            dpg.configure_item("mouse_overwrite_popup", show=True)
-            return
-        with open(filename, "w") as f:
-            json.dump(temp_mouse_data, f, indent=4)
-        print(f"Mouse file {'overwritten' if overwrite else 'created'}: {filename}")
-        dpg.set_value("mouse_file_path", filename)
-        dpg.hide_item("new_mouse_file_window")
-        check_ready_state()
+def finalize_mouse_file(data, path):
+    global current_mouse_data, current_mouse_file, current_session_name
+
+    # Write to disk
+    with open(path, "w") as f:
+        json.dump(data, f, indent=4)
+
+    print(f"Mouse file created: {path}")
+
+    # Set globals so session logic works
+    current_mouse_data = data
+    current_mouse_file = path
+    current_session_name = "session1"
+
+    # Update GUI
+    dpg.set_value("mouse_file_path", path)
+
+    # Ensure overwrite popup is hidden
+    dpg.configure_item("mouse_overwrite_popup", show=False)
 
 def create_mouse_file():
-        mouse_id = dpg.get_value("mouse_id_input")
-        notes = dpg.get_value("mouse_notes_input")
+    mouse_id = dpg.get_value("mouse_id_input")
+    notes = dpg.get_value("mouse_notes_input")
 
-        if not mouse_id.strip():
-            print("Mouse ID cannot be empty.")
-            return
+    if not mouse_id.strip():
+        print("Mouse ID cannot be empty.")
+        return
 
-        temp_mouse_data.clear()
-        temp_mouse_data.update({
-            "MouseID": mouse_id,
-            "relay_sessions": {
-                "session1": [None, None]
-            },
-            "Notes": notes
-        })
+    temp_mouse_data.clear()
+    temp_mouse_data.update({
+        "MouseID": mouse_id,
+        "relay_sessions": {},
+        "Notes": notes
+    })
 
-        filename = f"Mouse_{mouse_id}.json"
-        if os.path.exists(filename):
-            dpg.configure_item("mouse_overwrite_popup", show=True)
-        else:
-            finalize_mouse_file(temp_mouse_data)
+    # Prompt user for session name (optional: auto-set to session1)
+    session_name = "session1"
+    temp_mouse_data["relay_sessions"][session_name] = []
+
+    # Open file dialog to choose save location
+    dpg.hide_item("new_mouse_file_window")
+    dpg.show_item("mouse_save_dialog")
+
+def save_mouse_file_dialog_callback(sender, app_data):
+    selected_directory = app_data['file_path_name']
+    mouse_id = temp_mouse_data.get("MouseID", "unknown")
+    full_path = os.path.join(selected_directory, f"Mouse_{mouse_id}.json")
+
+    if os.path.exists(full_path):
+        temp_mouse_data["save_path"] = full_path
+        dpg.configure_item("mouse_overwrite_popup", show=True)
+    else:
+        finalize_mouse_file(temp_mouse_data, path=full_path)
+
+def confirm_session_number():
+    global current_mouse_data, current_session_name
+
+    session_num = dpg.get_value("session_input")
+    if not session_num.strip().isdigit():
+        print("Invalid session number.")
+        return
+
+    session_tag = f"session{int(session_num)}"
+    current_session_name = session_tag  # Store globally
+
+    # Ensure session exists in data
+    if session_tag not in current_mouse_data["relay_sessions"]:
+        current_mouse_data["relay_sessions"][session_tag] = []
+
+    print(f"Using session: {session_tag}")
+    dpg.configure_item("session_prompt_popup", show=False)
 
 def protocol_file_selected(sender, app_data):
         path = app_data['file_path_name']
@@ -338,7 +371,6 @@ def append_sensor_data(ts, values, port, sensor_mapping, timestamps, data_buffer
 def show_main_window():
         dpg.hide_item("intro_window")
         dpg.show_item("main_window")
-
         # Reactivate the last used relay pair
         if remembered_relays:
             try:
@@ -405,6 +437,8 @@ def build_gui():
 
     with dpg.file_dialog(directory_selector=False, show=False, callback=mouse_file_selected, tag="mouse_file_dialog", width=700, height=400):
         dpg.add_file_extension(".json", color=(0, 255, 0, 255))
+    
+
 
     with dpg.file_dialog(directory_selector=False, show=False, callback=protocol_file_selected, tag="protocol_file_dialog", width=700, height=400):
         dpg.add_file_extension(".json", color=(0, 255, 0, 255))
@@ -419,11 +453,14 @@ def build_gui():
             create_mouse_btn = dpg.add_button(label="Create", callback=create_mouse_file)
             dpg.add_button(label="Close", callback=lambda: dpg.hide_item("new_mouse_file_window"))
 
+    with dpg.file_dialog(directory_selector=True, show=False, callback=save_mouse_file_dialog_callback, tag="mouse_save_dialog", width=700, height=400):
+        dpg.add_file_extension(".json", color=(0, 255, 0, 255))
+
     # Popup attached to the create button (not the window)
     with dpg.popup(parent=create_mouse_btn, tag="mouse_overwrite_popup", modal=True):
         dpg.add_text("Mouse file already exists. Overwrite?")
         with dpg.group(horizontal=True):
-            dpg.add_button(label="Yes", callback=lambda: finalize_mouse_file(overwrite=True))
+            dpg.add_button(label="Yes", callback=lambda: finalize_mouse_file(temp_mouse_data, path=temp_mouse_data["save_path"]))
             dpg.add_button(label="No", callback=lambda: dpg.configure_item("mouse_overwrite_popup", show=False))
 
     # === New Protocol File Window ===
@@ -445,7 +482,13 @@ def build_gui():
             dpg.add_button(label="Yes", callback=lambda: finalize_protocol_file(overwrite=True))
             dpg.add_button(label="No", callback=lambda: dpg.configure_item("protocol_overwrite_popup", show=False))
 
-
+    # === Session Number Prompt Popup ===
+    with dpg.window(label="Enter Session Number", tag="session_prompt_popup", modal=True, show=False, width=300, height=150, no_title_bar=False):
+        dpg.add_text("What session is this?")
+        dpg.add_input_text(label="Session Number", tag="session_input")
+        with dpg.group(horizontal=True):
+            dpg.add_button(label="Confirm", callback=confirm_session_number)
+            dpg.add_button(label="Cancel", callback=lambda: dpg.configure_item("session_prompt_popup", show=False))
 
 
     # === Main Window Layout ===
