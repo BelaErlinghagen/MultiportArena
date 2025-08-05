@@ -18,6 +18,7 @@ timestamps = [[] for _ in range(16)]
 
 #file management stuff
 
+mouse_folder_path = ""
 current_session_name = "session1"
 current_mouse_file = None
 current_mouse_data = {}

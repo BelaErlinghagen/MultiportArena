@@ -255,11 +255,36 @@ def create_mouse_folder_structure(mouse_id: str, base_dir: str, notes: str = "")
         "json_path": os.path.join(mouse_folder, f"{mouse_id}.json")
     }
 
+def setup_session_folder(mouse_folder_path, session_name):
+    """
+    Ensures the session folder exists under the given mouse folder path.
+    Returns the path to the session folder.
+    """
+    session_folder = os.path.join(mouse_folder_path, session_name)
+    os.makedirs(session_folder, exist_ok=True)
+    os.makedirs(os.path.join(session_folder, "frames"), exist_ok=True)
+
+    # Create empty CSV files
+    sensor_csv = os.path.join(session_folder, "sensor_data.csv")
+    pose_csv = os.path.join(session_folder, "pose_estimation.csv")
+
+    with open(sensor_csv, "w", newline="") as f:
+        writer = csv.writer(f)
+        writer.writerow(["timestamp", "sensor1", "sensor2", "..."])  # adjust columns later
+
+    with open(pose_csv, "w", newline="") as f:
+        writer = csv.writer(f)
+        writer.writerow(["timestamp", "x1", "y1", "likelihood1", "..."])  # adjust for DLC output
+    print(f"[SESSION FOLDER CREATED]: {session_folder}")
+    return session_folder
+
 def mouse_file_selected(sender, app_data):
         global current_mouse_file, current_mouse_data
 
         mouse_file = app_data['file_path_name']
         current_mouse_file = mouse_file
+        global mouse_folder_path
+        mouse_folder_path = os.path.dirname(os.path.abspath(mouse_file))
         if mouse_file.endswith(".json"):
             dpg.set_value("mouse_file_path", mouse_file)
 
@@ -371,6 +396,7 @@ def confirm_session_number():
     # Ensure session exists in data
     if session_tag not in current_mouse_data["relay_sessions"]:
         current_mouse_data["relay_sessions"][session_tag] = []
+        current_session_path = setup_session_folder(mouse_folder_path, current_session_name)
 
     print(f"Using session: {session_tag}")
     dpg.configure_item("session_prompt_popup", show=False)
