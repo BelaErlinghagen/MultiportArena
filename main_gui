@@ -7,7 +7,7 @@ from shared_states import (
 from utils import (
     clean_serial_line, update_plot_series,
     parse_sensor_line, initialize_serial_connections,
-    append_sensor_data, build_gui
+    append_sensor_data, build_gui, update_camera_feed
 )
 
 
@@ -37,6 +37,9 @@ def main_loop():
 
     frame_counter += 1
     if frame_counter % UPDATE_PLOT_EVERY_N_FRAMES == 0:
+        # update camera feed
+        update_camera_feed()
+        # update sensor data
         for i in range(16):
             line_tag = f"sensor_plot_{i}_line"
             xaxis_tag = f"sensor_plot_{i}_xaxis"
@@ -48,7 +51,7 @@ def main_loop():
                 y_min = min(data_buffers[i]) if data_buffers[i] else 0
                 y_max = max(data_buffers[i]) if data_buffers[i] else 1
                 dpg.set_axis_limits(yaxis_tag, y_min, y_max + 1000)
-
+    
     dpg.render_dearpygui_frame()
 
 def main():

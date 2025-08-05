@@ -16,12 +16,21 @@ remembered_relays = {
 data_buffers = [[] for _ in range(16)]  # Support for 16 sensors
 timestamps = [[] for _ in range(16)]
 
+#file management stuff
+
 current_session_name = "session1"
 current_mouse_file = None
 current_mouse_data = {}
 temp_mouse_data = {}
-
 temp_protocol_data = {}
+
+# camera stuff
+
+CAMERA_WIDTH = 1440
+CAMERA_HEIGHT = 810
+camera_texture_tag = "camera_texture"
+camera_image_tag = "camera_image"
+camera_initialized = False
 
 # GUI stuff
 

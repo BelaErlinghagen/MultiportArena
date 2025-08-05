@@ -1,12 +1,15 @@
 import dearpygui.dearpygui as dpg
 from shared_states import (buttons_trials, buttons_lickports2, buttons_lickports1, remembered_relays, active_theme, ser1, ser2, 
                            label_table, temp_mouse_data, temp_protocol_data, trial_labels, timestamps, current_mouse_file, current_mouse_data,
-                           current_session_name)
+                           current_session_name, camera_image_tag, camera_initialized, camera_texture_tag, CAMERA_HEIGHT, CAMERA_WIDTH)
 import ctypes
 import os
 import json
 import time
 import serial
+import csv
+import numpy as np
+import cv2
 
 
 ### serial connection functions
@@ -150,6 +153,41 @@ def toggle_lickport_button(sender, button_dict, port_label, active_theme):
 
                 print(f"Relay state saved: {entry}")
 
+# Camera stuff
+
+def create_black_frame(width=CAMERA_WIDTH, height=CAMERA_HEIGHT):
+    return np.zeros((height, width, 3), dtype=np.uint8)
+
+def setup_camera_ui():
+    """Sets up the black texture and image widget"""
+    global camera_initialized
+    if camera_initialized:
+        return
+
+    black_frame = create_black_frame()
+    black_frame = cv2.cvtColor(black_frame, cv2.COLOR_BGR2RGBA)
+    black_frame = np.flip(black_frame, 0) / 255.0  # Normalize for DPG
+
+    # You MUST add textures inside a texture registry
+    with dpg.texture_registry(show=False):
+        dpg.add_static_texture(CAMERA_WIDTH, CAMERA_HEIGHT, black_frame, tag=camera_texture_tag)
+
+    # Now place the image inside a child window or layout container
+    with dpg.child_window(label="Camera Feed", width=CAMERA_WIDTH + 20, height=CAMERA_HEIGHT + 40, pos=[1100, 10]):
+        dpg.add_image(camera_texture_tag, tag=camera_image_tag)
+
+    camera_initialized = True
+
+def update_camera_feed():
+    """Updates the black texture frame (simulating camera input)"""
+    black_frame = create_black_frame()
+    black_frame = cv2.cvtColor(black_frame, cv2.COLOR_BGR2RGBA)
+    black_frame = np.flip(black_frame, 0) / 255.0
+    dpg.set_value(camera_texture_tag, black_frame)
+
+def render_callback(sender, data):
+    update_camera_feed()  # Update live feed image every frame
+
 ### GUI functions
 def shift_data_window(data_list, max_length):
     """Keep the data list within the maximum number of elements."""
@@ -187,6 +225,36 @@ def check_ready_state():
 
 ### File Management
 
+def create_mouse_folder_structure(mouse_id: str, base_dir: str, notes: str = ""):
+    mouse_folder = os.path.join(base_dir, f"{mouse_id}")
+    os.makedirs(mouse_folder, exist_ok=True)
+
+    # Create session1 subfolder and nested folders
+    session_name = "session1"
+    session_folder = os.path.join(mouse_folder, session_name)
+    os.makedirs(session_folder, exist_ok=True)
+    os.makedirs(os.path.join(session_folder, "frames"), exist_ok=True)
+
+    # Create empty CSV files
+    sensor_csv = os.path.join(session_folder, "sensor_data.csv")
+    pose_csv = os.path.join(session_folder, "pose_estimation.csv")
+
+    with open(sensor_csv, "w", newline="") as f:
+        writer = csv.writer(f)
+        writer.writerow(["timestamp", "sensor1", "sensor2", "..."])  # adjust columns later
+
+    with open(pose_csv, "w", newline="") as f:
+        writer = csv.writer(f)
+        writer.writerow(["timestamp", "x1", "y1", "likelihood1", "..."])  # adjust for DLC output
+
+    # Return paths for use
+    return {
+        "mouse_folder": mouse_folder,
+        "session_name": session_name,
+        "session_folder": session_folder,
+        "json_path": os.path.join(mouse_folder, f"{mouse_id}.json")
+    }
+
 def mouse_file_selected(sender, app_data):
         global current_mouse_file, current_mouse_data
 
@@ -216,7 +284,6 @@ def mouse_file_selected(sender, app_data):
 
         print(f"Loaded remembered_relays: {remembered_relays}")
         check_ready_state()
-
 
 def finalize_mouse_file(data, path):
     global current_mouse_data, current_mouse_file, current_session_name
@@ -264,13 +331,31 @@ def create_mouse_file():
 def save_mouse_file_dialog_callback(sender, app_data):
     selected_directory = app_data['file_path_name']
     mouse_id = temp_mouse_data.get("MouseID", "unknown")
-    full_path = os.path.join(selected_directory, f"Mouse_{mouse_id}.json")
+    notes = temp_mouse_data.get("Notes", "")
+    
+    # Create full folder structure
+    paths = create_mouse_folder_structure(mouse_id, selected_directory, notes)
 
-    if os.path.exists(full_path):
-        temp_mouse_data["save_path"] = full_path
-        dpg.configure_item("mouse_overwrite_popup", show=True)
-    else:
-        finalize_mouse_file(temp_mouse_data, path=full_path)
+    # Save initial JSON
+    mouse_json = {
+        "MouseID": mouse_id,
+        "relay_sessions": {
+            paths["session_name"]: []
+        },
+        "Notes": notes
+    }
+
+    with open(paths["json_path"], "w") as f:
+        json.dump(mouse_json, f, indent=4)
+
+    # Update state
+    global current_mouse_data, current_mouse_file, current_session_name
+    current_mouse_data = mouse_json
+    current_mouse_file = paths["json_path"]
+    dpg.set_value("mouse_file_path", current_mouse_file)
+    current_session_name = paths["session_name"]
+
+    print(f"[INFO] Mouse file and folder created at: {paths['mouse_folder']}")
 
 def confirm_session_number():
     global current_mouse_data, current_session_name
@@ -423,7 +508,7 @@ def build_gui():
                 with dpg.group(horizontal=True):
                     dpg.add_input_text(tag="mouse_file_path", readonly=True)
                     dpg.add_button(label="Browse", callback=lambda: dpg.show_item("mouse_file_dialog"))
-                    dpg.add_button(label="New File", callback=lambda: dpg.show_item("new_mouse_file_window"))
+                    dpg.add_button(label="New Folder", callback=lambda: dpg.show_item("new_mouse_file_window"))
 
                 dpg.add_text("Protocol File")
                 with dpg.group(horizontal=True):
@@ -495,6 +580,7 @@ def build_gui():
     with dpg.window(label="Main Window", tag="main_window", show=False,
                     no_resize=True, no_move=True,
                     width=screen_width, height=screen_height):
+        
 
         with dpg.group(horizontal=False):
             dpg.add_spacer(width=50, height = 50)
@@ -549,3 +635,6 @@ def build_gui():
                                 break
                             with dpg.table_cell():
                                 create_sensor_plot(idx)
+
+            # camera 
+            setup_camera_ui()
