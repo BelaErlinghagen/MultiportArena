@@ -236,8 +236,7 @@ def create_mouse_folder_structure(mouse_id: str, base_dir: str, notes: str = "")
     session_name = "session1"
     session_folder = os.path.join(mouse_folder, session_name)
     os.makedirs(session_folder, exist_ok=True)
-    global current_session_path
-    current_session_path = session_folder
+    shared_states.current_session_path = session_folder
     os.makedirs(os.path.join(session_folder, "frames"), exist_ok=True)
 
     # Create empty CSV files
@@ -266,8 +265,7 @@ def setup_session_folder(mouse_folder_path, session_name):
     Returns the path to the session folder.
     """
     session_folder = os.path.join(mouse_folder_path, session_name)
-    global current_session_path
-    current_session_path = session_folder
+    shared_states.current_session_path = session_folder
     os.makedirs(session_folder, exist_ok=True)
     os.makedirs(os.path.join(session_folder, "frames"), exist_ok=True)
 
@@ -447,13 +445,13 @@ def create_protocol_file():
 ### Data saving
 
 def start_recording_callback():
-    global current_session_path, active_theme
+    global  active_theme
     try:
-        if not current_session_path:
+        if not shared_states.current_session_path:
             print("[ERROR] No session path set.")
             return
 
-        sensor_csv_path = os.path.join(current_session_path, "sensor_data.csv")
+        sensor_csv_path = os.path.join(shared_states.current_session_path, "sensor_data.csv")
         shared_states.csv_file = open(sensor_csv_path, mode='w', newline='')
         shared_states.csv_writer = csv.writer(shared_states.csv_file)
     

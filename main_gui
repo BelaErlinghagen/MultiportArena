@@ -3,7 +3,7 @@ import time
 import cv2
 import os
 from shared_states import (
-    ser1, ser2, current_session_path, 
+    ser1, ser2,
     UPDATE_PLOT_EVERY_N_FRAMES, sensor_mapping, data_buffers, 
     timestamps, plots_initialized, frame_counter, MAX_POINTS)
 import shared_states
@@ -58,9 +58,8 @@ def main_loop():
             shared_states.csv_file.flush()
         else:
             print("[WARNING] csv_writer is None!")
-
-        if current_session_path and frame is not None:
-            img_filename = os.path.join(current_session_path, f"frame_{int(timestamp)}.jpg")
+        if shared_states.current_session_path and frame is not None:
+            img_filename = os.path.join(f"{shared_states.current_session_path}/frames", f"frame_{int(timestamp)}.jpg")
             cv2.imwrite(img_filename, frame)
 
     # Plot updates
