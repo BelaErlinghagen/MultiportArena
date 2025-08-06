@@ -54,7 +54,7 @@ def send_serial_command(serial_obj, command):
         return
     try:
         serial_obj.write(command.encode('utf-8'))
-        print(f"[INFO] Sent command: {command} to '{serial_obj.port}'")
+        #print(f"[INFO] Sent command: {command} to '{serial_obj.port}'")
     except Exception as e:
         print(f"[ERROR] Failed to send command to '{serial_obj.port}': {e}")
 
@@ -214,10 +214,6 @@ def setup_button_theme():
             dpg.add_theme_color(dpg.mvThemeCol_ButtonHovered, (115, 160, 255))
             dpg.add_theme_color(dpg.mvThemeCol_ButtonActive, (100, 190, 255))
     return theme
-
-def style_recording_buttons(active_theme):
-    dpg.bind_item_theme("start_recording_button", active_theme)
-    dpg.bind_item_theme("stop_recording_button", active_theme)
 
 def get_screen_dimensions():
     user32 = ctypes.windll.user32
@@ -448,6 +444,41 @@ def create_protocol_file():
         else:
             finalize_protocol_file(temp_protocol_data)
 
+### Data saving
+
+def start_recording_callback():
+    global current_session_path, active_theme
+    try:
+        if not current_session_path:
+            print("[ERROR] No session path set.")
+            return
+
+        sensor_csv_path = os.path.join(current_session_path, "sensor_data.csv")
+        shared_states.csv_file = open(sensor_csv_path, mode='w', newline='')
+        shared_states.csv_writer = csv.writer(shared_states.csv_file)
+    
+        # Header: timestamp + 16 sensor values
+        shared_states.csv_writer.writerow(["timestamp"] + [f"sensor_{i+1}" for i in range(16)])
+    
+        shared_states.is_recording = True
+        print(f"[RECORDING STARTED] -> {sensor_csv_path}")
+        dpg.bind_item_theme("start_recording_button", active_theme)
+        dpg.bind_item_theme("stop_recording_button", None)
+    except Exception as e:
+        print(f"[ERROR] in start_recording_callback: {e}")
+    dpg.split_frame()
+
+def stop_recording_callback():
+    shared_states.is_recording = False
+    dpg.bind_item_theme("start_recording_button", None)
+    dpg.bind_item_theme("stop_recording_button", active_theme)
+    if shared_states.csv_file:
+        shared_states.csv_file.close()
+        print("[RECORDING STOPPED]")
+        shared_states.csv_file = None   
+
+### Building the GUI
+
 def create_reward_table(prefix, button_dict):
     with dpg.table(width=1100, header_row=False):
         for _ in range(8):
@@ -464,37 +495,6 @@ def create_reward_table(prefix, button_dict):
                         callback=(lambda s=tag, d=button_dict, p=prefix[-1]: lambda: toggle_lickport_button(s, d, p, active_theme))()
                     )
                     button_dict[tag] = {"checked": False}
-
-### Data saving
-
-def start_recording_callback():
-    global current_session_path
-    try:
-        if not current_session_path:
-            print("[ERROR] No session path set.")
-            return
-
-        sensor_csv_path = os.path.join(current_session_path, "sensor_data.csv")
-        shared_states.csv_file = open(sensor_csv_path, mode='w', newline='')
-        shared_states.csv_writer = csv.writer(shared_states.csv_file)
-    
-        # Header: timestamp + 16 sensor values
-        shared_states.csv_writer.writerow(["timestamp"] + [f"sensor_{i+1}" for i in range(16)])
-    
-        shared_states.is_recording = True
-        print(f"[RECORDING STARTED] -> {sensor_csv_path}")
-    except Exception as e:
-        print(f"[ERROR] in start_recording_callback: {e}")
-    dpg.split_frame()
-
-def stop_recording_callback():
-    shared_states.is_recording = False
-    if shared_states.csv_file:
-        shared_states.csv_file.close()
-        print("[RECORDING STOPPED]")
-        shared_states.csv_file = None   
-
-### Building the GUI
 
 def create_sensor_plot(sensor_id):
     with dpg.plot(label=f"Sensor {sensor_id+1}", tag=f"sensor_plot_{sensor_id}", height=200, width=260):
@@ -533,25 +533,6 @@ def add_recording_buttons():
 def show_main_window():
         dpg.hide_item("intro_window")
         dpg.show_item("main_window")
-        # Reactivate the last used relay pair
-        if remembered_relays:
-            try:
-                # Get the last key and value
-                last_key = list(remembered_relays.keys())[-1]
-                relay1, relay2 = last_key.split('_')
-                tag1 = f"button1_{relay1}"
-                tag2 = f"button2_{relay2}"
-
-                # Mark buttons as checked
-                buttons_lickports1[tag1] = {"checked": True}
-                buttons_lickports2[tag2] = {"checked": True}
-
-                # Apply GUI changes
-                toggle_lickport_button(tag1, buttons_lickports1, "1", active_theme)
-                toggle_lickport_button(tag2, buttons_lickports2, "2", active_theme)
-                print(f"Restored last relay pair: {tag1}, {tag2}")
-            except Exception as e:
-                print(f"Error restoring relay pair from remembered_relays: {e}")
 
 def build_gui():
     global active_theme

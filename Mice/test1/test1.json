@@ -1,0 +1,50 @@
+{
+    "MouseID": "test1",
+    "relay_sessions": {
+        "session1": [
+            [
+                null,
+                "button2_5",
+                19248
+            ],
+            [
+                "button1_2",
+                "button2_5",
+                20021
+            ]
+        ],
+        "session4": [
+            [
+                "button1_2",
+                "button2_3",
+                23019
+            ],
+            [
+                "button1_4",
+                "button2_3",
+                23986
+            ],
+            [
+                "button1_1",
+                "button2_3",
+                28163
+            ],
+            [
+                "button1_1",
+                "button2_5",
+                29322
+            ],
+            [
+                "button1_1",
+                "button2_10",
+                34387
+            ],
+            [
+                "button1_7",
+                "button2_10",
+                35354
+            ]
+        ]
+    },
+    "Notes": ""
+}
