@@ -404,43 +404,76 @@ def confirm_session_number():
     dpg.configure_item("session_prompt_popup", show=False)
 
 def protocol_file_selected(sender, app_data):
-        path = app_data['file_path_name']
-        if path.endswith(".json"):
-            dpg.set_value("protocol_file_path", path)
-        check_ready_state()
+    path = app_data['file_path_name']
+    if path.endswith(".json"):
+        dpg.set_value("protocol_file_path", path)
+        # Optionally load protocol data into shared state
+        with open(path, "r") as f:
+            shared_states.current_protocol = json.load(f)
+        update_protocol_summary()
+    check_ready_state()
 
-def finalize_protocol_file(temp_protocol_data, overwrite=False):
-    protocol_name = temp_protocol_data["ProtocolName"]
+def finalize_protocol_file(protocol_data, overwrite=False):
+    protocol_name = protocol_data["ProtocolName"]
     filename = f"Protocol_{protocol_name}.json"
+
     if not overwrite and os.path.exists(filename):
         dpg.configure_item("protocol_overwrite_popup", show=True)
+        # Save the pending data somewhere so user can confirm
+        shared_states.pending_protocol_save = protocol_data
         return False
+
     with open(filename, "w") as f:
-        json.dump(temp_protocol_data, f, indent=4)
+        json.dump(protocol_data, f, indent=4)
+
     dpg.set_value("protocol_file_path", filename)
-    dpg.hide_item("new_protocol_file_window")
+    shared_states.current_protocol = protocol_data
+    shared_states.protocol_file_path = filename
+    dpg.configure_item("new_protocol_gui", show=False)
+
+    print(f"[SAVED] Protocol saved to {filename}")
+    update_protocol_summary()
     check_ready_state()
     return True
 
-def create_protocol_file():
-        protocol_name = dpg.get_value("protocol_name_input")
-        comments = dpg.get_value("protocol_comments_input")
+def confirm_protocol_overwrite():
+    if hasattr(shared_states, 'pending_protocol_save'):
+        finalize_protocol_file(shared_states.pending_protocol_save, overwrite=True)
+        del shared_states.pending_protocol_save
+        dpg.configure_item("protocol_overwrite_popup", show=False)
 
-        if not protocol_name.strip():
-            print("Protocol name cannot be empty.")
-            return
+def cancel_protocol_overwrite():
+    if hasattr(shared_states, 'pending_protocol_save'):
+        del shared_states.pending_protocol_save
+    dpg.configure_item("protocol_overwrite_popup", show=False)
 
-        temp_protocol_data.clear()
-        temp_protocol_data.update({
-            "ProtocolName": protocol_name,
-            "Comments": comments
-        })
+def toggle_mode_inputs(sender, app_data, user_data):
+    if app_data == "Fixed Time":
+        dpg.show_item("protocol_time_slider")
+        dpg.hide_item("protocol_trials_input")
+    else:
+        dpg.hide_item("protocol_time_slider")
+        dpg.show_item("protocol_trials_input")
 
-        filename = f"Protocol_{protocol_name}.json"
-        if os.path.exists(filename):
-            dpg.configure_item("protocol_overwrite_popup", show=True)
-        else:
-            finalize_protocol_file(temp_protocol_data)
+def commit_protocol():
+    protocol_name = dpg.get_value("protocol_name_input").strip()
+    comments = dpg.get_value("protocol_comments_input")
+    mode = dpg.get_value("protocol_mode_radio")
+
+    if not protocol_name:
+        print("Protocol name cannot be empty.")
+        return
+
+    protocol_data = {
+        "ProtocolName": protocol_name,
+        "Comments": comments,
+        "Mode": "time" if mode == "Fixed Time" else "trials",
+        "SessionLength": dpg.get_value("protocol_time_slider") if mode == "Fixed Time" else None,
+        "TrialCount": dpg.get_value("protocol_trials_input") if mode == "Fixed Trials" else None,
+        "IntertrialInterval": dpg.get_value("iti_slider")
+    }
+
+    finalize_protocol_file(protocol_data, overwrite=False)
 
 ### Data saving
 
@@ -518,19 +551,66 @@ def add_recording_buttons():
             tag="start_recording_button",
             callback=start_recording_callback,
             width=150,
-            pos=(1200, 1200)  # try some visible position on the screen
+            height=120,
+            pos=(1600, 870)  # try some visible position on the screen
         )
         dpg.add_button(
             label="Stop Recording",
             tag="stop_recording_button",
             callback=stop_recording_callback,
             width=150,
-            pos=(1500, 1200)
+            height=120,
+            pos=(1800, 870)
         )
 
 def show_main_window():
         dpg.hide_item("intro_window")
         dpg.show_item("main_window")
+
+def show_new_protocol_gui():
+    if dpg.does_item_exist("new_protocol_gui"):
+        dpg.configure_item("new_protocol_gui", show=True)
+        return
+
+    with dpg.window(label="Create New Protocol", modal=True, tag="new_protocol_gui", width=450, height=400, no_resize=True, no_collapse=True, no_close=True):
+        dpg.add_text("Protocol Name:")
+        dpg.add_input_text(tag="protocol_name_input", hint="Enter protocol name")
+
+        dpg.add_text("Comments:")
+        dpg.add_input_text(tag="protocol_comments_input", multiline=True, height=60)
+
+        dpg.add_separator()
+
+        dpg.add_text("Session Termination Mode:")
+        dpg.add_radio_button(items=["Fixed Time", "Fixed Trials"], tag="protocol_mode_radio", default_value="Fixed Time", callback=toggle_mode_inputs)
+
+        dpg.add_slider_int(label="Session Duration (seconds)", tag="protocol_time_slider", min_value=10, max_value=3600, default_value=600)
+        dpg.add_input_int(label="Number of Trials", tag="protocol_trials_input", default_value=10, min_value=1)
+        dpg.hide_item("protocol_trials_input")  # start hidden since default is time-based
+
+        dpg.add_separator()
+        dpg.add_slider_int(label="Intertrial Interval (seconds)", tag="iti_slider", min_value=1, max_value=60, default_value=5)
+
+        dpg.add_button(label="Save Protocol", callback=commit_protocol)
+        dpg.add_button(label="Cancel", callback=lambda: dpg.configure_item("new_protocol_gui", show=False))
+
+def update_protocol_summary():
+    if not hasattr(shared_states, 'current_protocol'):
+        return
+
+    protocol = shared_states.current_protocol
+    if dpg.does_item_exist("protocol_summary_group"):
+        dpg.delete_item("protocol_summary_group", children_only=True)
+    else:
+        dpg.add_group(tag="protocol_summary_group", parent="main_window")
+
+    dpg.add_text(f"Protocol: {protocol['ProtocolName']}", parent="protocol_summary_group", pos=(1600, 1000))
+    dpg.add_text(f"Mode: {protocol['Mode']}", parent="protocol_summary_group", pos=(1800, 1000))
+    if protocol['Mode'] == "time":
+        dpg.add_text(f"Session length: {protocol['SessionLength']} seconds", parent="protocol_summary_group", pos=(2000, 1000))
+    else:
+        dpg.add_text(f"Trial count: {protocol['TrialCount']}", parent="protocol_summary_group", pos=(2000, 1000))
+    dpg.add_text(f"ITI: {protocol['IntertrialInterval']} s", parent="protocol_summary_group", pos=(2000, 1200))
 
 def build_gui():
     global active_theme
@@ -570,7 +650,7 @@ def build_gui():
                 with dpg.group(horizontal=True):
                     dpg.add_input_text(tag="protocol_file_path", readonly=True)
                     dpg.add_button(label="Browse", callback=lambda: dpg.show_item("protocol_file_dialog"))
-                    dpg.add_button(label="New File", callback=lambda: dpg.show_item("new_protocol_file_window"))
+                    dpg.add_button(label="New Protocol", callback=show_new_protocol_gui)
 
                 dpg.add_button(label="Start Experiment", tag="start_experiment_button", callback=show_main_window, show=False)
 
@@ -604,24 +684,13 @@ def build_gui():
             dpg.add_button(label="Yes", callback=lambda: finalize_mouse_file(temp_mouse_data, path=temp_mouse_data["save_path"]))
             dpg.add_button(label="No", callback=lambda: dpg.configure_item("mouse_overwrite_popup", show=False))
 
-    # === New Protocol File Window ===
+ 
 
-    with dpg.window(label="Create New Protocol File", tag="new_protocol_file_window", modal=True, show=False, width=400, height=300):
-        dpg.add_text("Enter Protocol Information:")
-        dpg.add_input_text(label="Protocol Name", tag="protocol_name_input")
-        dpg.add_input_int(label="Number of Trials", tag="protocol_trials_input", default_value=10)
-        dpg.add_input_int(label="Reward Duration (ms)", tag="protocol_duration_input", default_value=500)
-        dpg.add_input_text(label="Comments", tag="protocol_comments_input", multiline=True)
-        with dpg.group(horizontal=True):
-            create_protocol_btn = dpg.add_button(label="Create", callback=create_protocol_file)
-            dpg.add_button(label="Close", callback=lambda: dpg.hide_item("new_protocol_file_window"))
-
-    # Popup attached to the create protocol button
-    with dpg.popup(parent=create_protocol_btn, tag="protocol_overwrite_popup", modal=True):
-        dpg.add_text("Protocol file already exists. Overwrite?")
-        with dpg.group(horizontal=True):
-            dpg.add_button(label="Yes", callback=lambda: finalize_protocol_file(overwrite=True))
-            dpg.add_button(label="No", callback=lambda: dpg.configure_item("protocol_overwrite_popup", show=False))
+    # Create popup
+        with dpg.window(modal=True, show=False, tag="protocol_overwrite_popup", label="Overwrite Protocol?"):
+            dpg.add_text("A protocol with this name already exists. Overwrite?")
+            dpg.add_button(label="Yes", callback=confirm_protocol_overwrite)
+            dpg.add_button(label="No", callback=cancel_protocol_overwrite)
 
     # === Session Number Prompt Popup ===
     with dpg.window(label="Enter Session Number", tag="session_prompt_popup", modal=True, show=False, width=300, height=150, no_title_bar=False):

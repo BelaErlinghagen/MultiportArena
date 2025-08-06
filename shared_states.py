@@ -25,6 +25,9 @@ current_mouse_data = {}
 temp_mouse_data = {}
 temp_protocol_data = {}
 current_session_path = None
+current_protocol = None
+protocol_file_path = None
+pending_protocol_save = None
 csv_file = None
 csv_writer = None
 
