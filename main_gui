@@ -1,13 +1,17 @@
 import dearpygui.dearpygui as dpg
 import time
+import cv2
+import os
 from shared_states import (
-    ser1, ser2, MAX_POINTS, 
+    ser1, ser2, current_session_path, 
     UPDATE_PLOT_EVERY_N_FRAMES, sensor_mapping, data_buffers, 
-    timestamps, plots_initialized, frame_counter)
+    timestamps, plots_initialized, frame_counter, MAX_POINTS)
+import shared_states
 from utils import (
     clean_serial_line, update_plot_series,
     parse_sensor_line, initialize_serial_connections,
-    append_sensor_data, build_gui, update_camera_feed
+    build_gui, update_camera_feed, get_camera_frame,
+    append_sensor_data
 )
 
 
@@ -19,6 +23,12 @@ def main_loop():
         dpg.render_dearpygui_frame()
         return
 
+    # Get frame from camera (mock or real)
+    frame = get_camera_frame()
+    if frame is not None:
+        update_camera_feed()  # Show in GUI
+
+    # Always read sensors
     ser1.write(b's')
     ser2.write(b's')
 
@@ -27,19 +37,35 @@ def main_loop():
     ts1, vals1 = parse_sensor_line(line1)
     ts2, vals2 = parse_sensor_line(line2)
 
+    # Append to buffers for live plotting
     if ts1:
         append_sensor_data(ts1, vals1, "ser1", sensor_mapping, timestamps, data_buffers, MAX_POINTS)
     if ts2:
         append_sensor_data(ts2, vals2, "ser2", sensor_mapping, timestamps, data_buffers, MAX_POINTS)
 
-    if not plots_initialized:
-        plots_initialized = True
+    # Write to CSV if recording
+    if shared_states.is_recording:
+        timestamp = timestamps[0][-1] if timestamps[0] else time.strftime("%Y-%m-%d %H:%M:%S")
+        if shared_states.csv_writer:
+            combined_vals = [0] * 16
+            if vals1:
+                for i, val in enumerate(vals1):
+                    combined_vals[i] = val
+            if vals2:
+                for i, val in enumerate(vals2):
+                    combined_vals[i + 8] = val
+            shared_states.csv_writer.writerow([timestamp] + combined_vals)
+            shared_states.csv_file.flush()
+        else:
+            print("[WARNING] csv_writer is None!")
 
+        if current_session_path and frame is not None:
+            img_filename = os.path.join(current_session_path, f"frame_{int(timestamp)}.jpg")
+            cv2.imwrite(img_filename, frame)
+
+    # Plot updates
     frame_counter += 1
     if frame_counter % UPDATE_PLOT_EVERY_N_FRAMES == 0:
-        # update camera feed
-        update_camera_feed()
-        # update sensor data
         for i in range(16):
             line_tag = f"sensor_plot_{i}_line"
             xaxis_tag = f"sensor_plot_{i}_xaxis"
@@ -51,7 +77,7 @@ def main_loop():
                 y_min = min(data_buffers[i]) if data_buffers[i] else 0
                 y_max = max(data_buffers[i]) if data_buffers[i] else 1
                 dpg.set_axis_limits(yaxis_tag, y_min, y_max + 1000)
-    
+
     dpg.render_dearpygui_frame()
 
 def main():
@@ -69,3 +95,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+

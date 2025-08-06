@@ -1,7 +1,9 @@
 import dearpygui.dearpygui as dpg
 from shared_states import (buttons_trials, buttons_lickports2, buttons_lickports1, remembered_relays, active_theme, ser1, ser2, 
                            label_table, temp_mouse_data, temp_protocol_data, trial_labels, timestamps, current_mouse_file, current_mouse_data,
-                           current_session_name, camera_image_tag, camera_initialized, camera_texture_tag, CAMERA_HEIGHT, CAMERA_WIDTH)
+                           current_session_name, camera_image_tag, camera_initialized, camera_texture_tag, CAMERA_HEIGHT, CAMERA_WIDTH,
+                           current_session_path)
+import shared_states
 import ctypes
 import os
 import json
@@ -12,12 +14,14 @@ import numpy as np
 import cv2
 
 
+
+
 ### serial connection functions
 
 def initialize_serial_connections():
     global ser1, ser2
     try:
-        time.sleep(3)
+        time.sleep(2)
         print("Serial connections established.")
     except serial.SerialException as e:
         print(f"Serial connection failed: {e}")
@@ -110,7 +114,6 @@ def toggle_trial_button(sender, button_dict, active_theme, ser1, ser2):
             dpg.bind_item_theme(tag, active_theme)
             if not dpg.get_value(tag):
                 dpg.set_value(tag, True)
-    
 
 def toggle_lickport_button(sender, button_dict, port_label, active_theme):
     global current_mouse_data, current_mouse_file
@@ -144,7 +147,7 @@ def toggle_lickport_button(sender, button_dict, port_label, active_theme):
             # Append relay state with timestamp to current_mouse_data
             if current_mouse_data and current_mouse_file:
                 relay_sessions = current_mouse_data.setdefault("relay_sessions", {})
-                timestamp = timestamp = timestamps[0][-1] if timestamps[0] else time.strftime("%Y-%m-%d %H:%M:%S")
+                timestamp = timestamps[0][-1] if timestamps[0] else time.strftime("%Y-%m-%d %H:%M:%S")
                 entry = [remembered_relays.get('1'), remembered_relays.get('2'), timestamp]
                 relay_sessions.setdefault(current_session_name, []).append(entry)
                 # Save back to disk
@@ -155,8 +158,9 @@ def toggle_lickport_button(sender, button_dict, port_label, active_theme):
 
 # Camera stuff
 
-def create_black_frame(width=CAMERA_WIDTH, height=CAMERA_HEIGHT):
-    return np.zeros((height, width, 3), dtype=np.uint8)
+def get_camera_frame():
+    # Return a dummy black frame if real camera is not available
+    return np.zeros((CAMERA_HEIGHT, CAMERA_WIDTH, 3), dtype=np.uint8)
 
 def setup_camera_ui():
     """Sets up the black texture and image widget"""
@@ -164,7 +168,7 @@ def setup_camera_ui():
     if camera_initialized:
         return
 
-    black_frame = create_black_frame()
+    black_frame = get_camera_frame()
     black_frame = cv2.cvtColor(black_frame, cv2.COLOR_BGR2RGBA)
     black_frame = np.flip(black_frame, 0) / 255.0  # Normalize for DPG
 
@@ -179,8 +183,7 @@ def setup_camera_ui():
     camera_initialized = True
 
 def update_camera_feed():
-    """Updates the black texture frame (simulating camera input)"""
-    black_frame = create_black_frame()
+    black_frame = get_camera_frame()
     black_frame = cv2.cvtColor(black_frame, cv2.COLOR_BGR2RGBA)
     black_frame = np.flip(black_frame, 0) / 255.0
     dpg.set_value(camera_texture_tag, black_frame)
@@ -212,6 +215,10 @@ def setup_button_theme():
             dpg.add_theme_color(dpg.mvThemeCol_ButtonActive, (100, 190, 255))
     return theme
 
+def style_recording_buttons(active_theme):
+    dpg.bind_item_theme("start_recording_button", active_theme)
+    dpg.bind_item_theme("stop_recording_button", active_theme)
+
 def get_screen_dimensions():
     user32 = ctypes.windll.user32
     user32.SetProcessDPIAware()
@@ -233,6 +240,8 @@ def create_mouse_folder_structure(mouse_id: str, base_dir: str, notes: str = "")
     session_name = "session1"
     session_folder = os.path.join(mouse_folder, session_name)
     os.makedirs(session_folder, exist_ok=True)
+    global current_session_path
+    current_session_path = session_folder
     os.makedirs(os.path.join(session_folder, "frames"), exist_ok=True)
 
     # Create empty CSV files
@@ -261,6 +270,8 @@ def setup_session_folder(mouse_folder_path, session_name):
     Returns the path to the session folder.
     """
     session_folder = os.path.join(mouse_folder_path, session_name)
+    global current_session_path
+    current_session_path = session_folder
     os.makedirs(session_folder, exist_ok=True)
     os.makedirs(os.path.join(session_folder, "frames"), exist_ok=True)
 
@@ -299,11 +310,8 @@ def mouse_file_selected(sender, app_data):
                 last_relays = relay_sessions[last_session]
 
                 # Parse and assign to remembered_relays
-                for relay in last_relays:
-                    if relay.startswith("1_"):
-                        remembered_relays["1"] = relay
-                    elif relay.startswith("2_"):
-                        remembered_relays["2"] = relay
+                remembered_relays["1"] = last_relays[-1][0]
+                remembered_relays["2"] = last_relays[-1][1]
             else:
                 print("No relay session history found.")
 
@@ -407,7 +415,6 @@ def protocol_file_selected(sender, app_data):
             dpg.set_value("protocol_file_path", path)
         check_ready_state()
 
-
 def finalize_protocol_file(temp_protocol_data, overwrite=False):
     protocol_name = temp_protocol_data["ProtocolName"]
     filename = f"Protocol_{protocol_name}.json"
@@ -458,6 +465,34 @@ def create_reward_table(prefix, button_dict):
                     )
                     button_dict[tag] = {"checked": False}
 
+### Data saving
+
+def start_recording_callback():
+    global current_session_path
+    try:
+        if not current_session_path:
+            print("[ERROR] No session path set.")
+            return
+
+        sensor_csv_path = os.path.join(current_session_path, "sensor_data.csv")
+        shared_states.csv_file = open(sensor_csv_path, mode='w', newline='')
+        shared_states.csv_writer = csv.writer(shared_states.csv_file)
+    
+        # Header: timestamp + 16 sensor values
+        shared_states.csv_writer.writerow(["timestamp"] + [f"sensor_{i+1}" for i in range(16)])
+    
+        shared_states.is_recording = True
+        print(f"[RECORDING STARTED] -> {sensor_csv_path}")
+    except Exception as e:
+        print(f"[ERROR] in start_recording_callback: {e}")
+    dpg.split_frame()
+
+def stop_recording_callback():
+    shared_states.is_recording = False
+    if shared_states.csv_file:
+        shared_states.csv_file.close()
+        print("[RECORDING STOPPED]")
+        shared_states.csv_file = None   
 
 ### Building the GUI
 
@@ -478,6 +513,22 @@ def append_sensor_data(ts, values, port, sensor_mapping, timestamps, data_buffer
         data_buffers[idx].append(val)
         shift_data_window(data_buffers[idx], max_points)
 
+def add_recording_buttons():
+    with dpg.group(horizontal=True):
+        dpg.add_button(
+            label="Start Recording",
+            tag="start_recording_button",
+            callback=start_recording_callback,
+            width=150,
+            pos=(1200, 1200)  # try some visible position on the screen
+        )
+        dpg.add_button(
+            label="Stop Recording",
+            tag="stop_recording_button",
+            callback=stop_recording_callback,
+            width=150,
+            pos=(1500, 1200)
+        )
 
 def show_main_window():
         dpg.hide_item("intro_window")
@@ -664,3 +715,5 @@ def build_gui():
 
             # camera 
             setup_camera_ui()
+
+            add_recording_buttons()

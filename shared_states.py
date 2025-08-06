@@ -5,7 +5,7 @@ ser2 = serial.Serial('COM11', 9600, timeout=1)
 
 sensor_mapping = {
     "ser1": [1, 2],  # Maps ser1 values to sensors 1 and 2
-    "ser2": [9, 10],     # Maps ser2 values to sensor 9
+    "ser2": [9],     # Maps ser2 values to sensor 9
 }
 
 remembered_relays = {
@@ -24,6 +24,9 @@ current_mouse_file = None
 current_mouse_data = {}
 temp_mouse_data = {}
 temp_protocol_data = {}
+current_session_path = None
+csv_file = None
+csv_writer = None
 
 # camera stuff
 
@@ -32,6 +35,7 @@ CAMERA_HEIGHT = 810
 camera_texture_tag = "camera_texture"
 camera_image_tag = "camera_image"
 camera_initialized = False
+is_recording = False
 
 # GUI stuff
 
