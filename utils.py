@@ -21,10 +21,26 @@ import cv2
 def initialize_serial_connections():
     global ser1, ser2
     try:
-        time.sleep(2)
-        print("Serial connections established.")
+        time.sleep(2)  # Give time for Arduinos to reset
+
+        # Wait for READY handshake
+        for ser in [ser1, ser2]:
+            ready = False
+            start = time.time()
+            while time.time() - start < 5:  # max 5 sec wait
+                if ser.in_waiting:
+                    line = ser.readline().decode("utf-8").strip()
+                    if line == "READY":
+                        print(f"[INFO] {ser.port} is ready.")
+                        ready = True
+                        break
+            if not ready:
+                print(f"[ERROR] {ser.port} did not send READY signal.")
+
+        print("[INFO] Serial connections initialized.")
+
     except serial.SerialException as e:
-        print(f"Serial connection failed: {e}")
+        print(f"[ERROR] Serial connection failed: {e}")
         ser1 = None
         ser2 = None
 
@@ -57,6 +73,27 @@ def send_serial_command(serial_obj, command):
         #print(f"[INFO] Sent command: {command} to '{serial_obj.port}'")
     except Exception as e:
         print(f"[ERROR] Failed to send command to '{serial_obj.port}': {e}")
+
+def set_led(serial_obj, led_number, on=True):
+    """
+    Controls an LED via appropriate Arduino.
+    LED numbers: 1–16
+    """
+    try:
+        if 1 <= led_number <= 8:
+            target_serial = shared_states.ser1
+            local_led = led_number
+        elif 9 <= led_number <= 16:
+            target_serial = shared_states.ser2
+            local_led = led_number - 8
+        else:
+            print(f"[ERROR] Invalid LED number: {led_number}")
+            return
+
+        cmd = 'L' if on else 'l'
+        target_serial.write(f"{cmd}{local_led}".encode())
+    except Exception as e:
+        print(f"[ERROR] Failed to send LED command: {e}")
 
 ### Buttons that trigger serial connection
 

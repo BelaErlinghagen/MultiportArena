@@ -3,7 +3,7 @@
 // ------------------- CONFIGURATION -------------------
 const int NUM_RELAYS = 8;
 const int NUM_SENSORS = 1;  // ← Change this to add more sensors
-const int LED_PIN = 9;
+const int NUM_LEDS = 1;
 
 // Define sensor pin pairs here
 int sendPins[NUM_SENSORS] = {2};
@@ -14,6 +14,9 @@ const int RELAY_PINS[NUM_RELAYS] = {
   26, 28, 23, 25, 26, 27, 24, 29
 };
 
+// Define LEDs
+const int LED_PINS[NUM_LEDS] = {9};
+
 // Create sensor objects
 CapacitiveSensor* sensors[NUM_SENSORS];
 
@@ -22,21 +25,24 @@ bool relayControlEnabled = false;
 bool relayActive[NUM_RELAYS] = { false };
 
 void setup() {
-  Serial.begin(9600);
+  Serial.begin(115200);
 
-  // Initialize relay pins
   for (int i = 0; i < NUM_RELAYS; i++) {
     pinMode(RELAY_PINS[i], OUTPUT);
-    digitalWrite(RELAY_PINS[i], HIGH);  // OFF (active LOW)
+    digitalWrite(RELAY_PINS[i], HIGH); // OFF
   }
 
-  pinMode(LED_PIN, OUTPUT);
-  digitalWrite(LED_PIN, LOW);
+  for (int i = 0; i < NUM_LEDS; i++) {
+    pinMode(LED_PINS[i], OUTPUT);
+    digitalWrite(LED_PINS[i], LOW);  // default OFF
+  }
 
-  // Initialize sensor objects
   for (int i = 0; i < NUM_SENSORS; i++) {
     sensors[i] = new CapacitiveSensor(sendPins[i], receivePins[i]);
   }
+
+  // Send handshake
+  Serial.println("READY");
 }
 
 void loop() {
@@ -45,24 +51,34 @@ void loop() {
 
     if (c == 'r') {
       relayControlEnabled = true;
-      digitalWrite(LED_PIN, HIGH);
-    } else if (c == 'i') {
+    } 
+    
+    else if (c == 'i') {
       relayControlEnabled = false;
-      digitalWrite(LED_PIN, LOW);
       for (int i = 0; i < NUM_RELAYS; i++) {
         relayActive[i] = false;
-        digitalWrite(RELAY_PINS[i], HIGH);  // OFF
+        digitalWrite(RELAY_PINS[i], HIGH);  // OFF (active LOW)
       }
-    } else if (c >= '1' && c <= '8') {
+
+      // Turn off all LEDs during intertrial (optional)
+      for (int i = 0; i < NUM_LEDS; i++) {
+        digitalWrite(LED_PINS[i], LOW);
+      }
+    }
+
+    else if (c >= '1' && c <= '8') {
       int relayIndex = c - '1';
-      relayActive[relayIndex] = true;
-    } else if (c == 's') {
-      // On-demand sensor reading
+      if (relayIndex >= 0 && relayIndex < NUM_RELAYS) {
+        relayActive[relayIndex] = true;
+      }
+    }
+
+    else if (c == 's') {
+      // Sensor read on request
       unsigned long timestamp = millis();
       Serial.print("ts:");
       Serial.print(timestamp);
       Serial.print(" cs:");
-
       for (int i = 0; i < NUM_SENSORS; i++) {
         long reading = sensors[i]->capacitiveSensor(80);
         Serial.print(reading);
@@ -70,17 +86,36 @@ void loop() {
       }
       Serial.println();
     }
+
+    else if (c == 'L') {
+      // Turn ON individual LED
+      while (!Serial.available()) {}
+      int ledIndex = Serial.read() - '1';  // '1' → 0
+      if (ledIndex >= 0 && ledIndex < NUM_LEDS) {
+        digitalWrite(LED_PINS[ledIndex], HIGH);
+      }
+    }
+
+    else if (c == 'l') {
+      // Turn OFF individual LED
+      while (!Serial.available()) {}
+      int ledIndex = Serial.read() - '1';  // '1' → 0
+      if (ledIndex >= 0 && ledIndex < NUM_LEDS) {
+        digitalWrite(LED_PINS[ledIndex], LOW);
+      }
+    }
   }
 
-  // Relay control logic (optional to expand)
+  // Relay control logic (placeholder)
   if (relayControlEnabled) {
     long readings[NUM_SENSORS];
     for (int i = 0; i < NUM_SENSORS; i++) {
       readings[i] = sensors[i]->capacitiveSensor(80);
     }
 
+    // Example: activate relays based on sensor 0
     if (relayActive[0]) digitalWrite(RELAY_PINS[0], readings[0] > 2500 ? LOW : HIGH);
-    if (relayActive[1]) digitalWrite(RELAY_PINS[1], readings[1] > 2500 ? LOW : HIGH);
-    // Add logic here for additional relays/sensors as needed
+    if (relayActive[1]) digitalWrite(RELAY_PINS[1], readings[0] > 2500 ? LOW : HIGH);
+    // Add more relay logic if needed
   }
 }

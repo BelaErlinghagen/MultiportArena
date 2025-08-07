@@ -1,7 +1,7 @@
 # Serial Communication
 import serial
-ser1 = serial.Serial('COM10', 9600, timeout=1)
-ser2 = serial.Serial('COM11', 9600, timeout=1)
+ser1 = serial.Serial('COM10', 115200, timeout=1)
+ser2 = serial.Serial('COM11', 115200, timeout=1)
 
 sensor_mapping = {
     "ser1": [1, 2],  # Maps ser1 values to sensors 1 and 2
