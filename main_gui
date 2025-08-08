@@ -10,9 +10,9 @@ import shared_states
 from utils import (
     clean_serial_line, update_plot_series,
     parse_sensor_line, initialize_serial_connections,
-    build_gui, update_camera_feed, get_camera_frame,
-    append_sensor_data
+    update_camera_feed, get_camera_frame
 )
+from gui_functions import build_gui, append_sensor_data
 
 
 

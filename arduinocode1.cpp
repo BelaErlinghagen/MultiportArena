@@ -4,7 +4,9 @@
 const int NUM_RELAYS = 8;
 const int NUM_SENSORS = 2;  // ← Change this to add more sensors
 const int NUM_LEDS = 1;
-
+int RELAY_TO_REWARD[NUM_RELAYS] = {0};  // 0 = unassigned, 1 = reward1, 2 = reward2
+int pwmReward1 = 255;
+int pwmReward2 = 255;
 
 // Define sensor pin pairs here
 int sendPins[NUM_SENSORS] = {2, 4};
@@ -52,16 +54,18 @@ void loop() {
 
     if (c == 'r') {
       relayControlEnabled = true;
-    } 
-    
+    }
+
     else if (c == 'i') {
       relayControlEnabled = false;
+      
+      // Reset relays
       for (int i = 0; i < NUM_RELAYS; i++) {
         relayActive[i] = false;
         digitalWrite(RELAY_PINS[i], HIGH);  // OFF (active LOW)
       }
 
-      // Turn off all LEDs during intertrial (optional)
+      // Turn off all LEDs
       for (int i = 0; i < NUM_LEDS; i++) {
         digitalWrite(LED_PINS[i], LOW);
       }
@@ -80,6 +84,7 @@ void loop() {
       Serial.print("ts:");
       Serial.print(timestamp);
       Serial.print(" cs:");
+
       for (int i = 0; i < NUM_SENSORS; i++) {
         long reading = sensors[i]->capacitiveSensor(80);
         Serial.print(reading);
@@ -89,34 +94,74 @@ void loop() {
     }
 
     else if (c == 'L') {
-      // Turn ON individual LED
       while (!Serial.available()) {}
-      int ledIndex = Serial.read() - '1';  // '1' → 0
+      int ledIndex = Serial.read() - '1';  // '1' → index 0
       if (ledIndex >= 0 && ledIndex < NUM_LEDS) {
         digitalWrite(LED_PINS[ledIndex], HIGH);
       }
     }
 
     else if (c == 'l') {
-      // Turn OFF individual LED
       while (!Serial.available()) {}
-      int ledIndex = Serial.read() - '1';  // '1' → 0
+      int ledIndex = Serial.read() - '1';
       if (ledIndex >= 0 && ledIndex < NUM_LEDS) {
         digitalWrite(LED_PINS[ledIndex], LOW);
       }
     }
+
+    else if (c == 'P') {
+      while (Serial.available() < 2) {}
+      char rewardChannel = Serial.read();       // '1' or '2'
+      int pwmVal = Serial.read();               // 0–255
+      pwmVal = constrain(pwmVal, 0, 255);
+
+      if (rewardChannel == '1') {
+        pwmReward1 = pwmVal;
+        Serial.print("PWM1 set to ");
+        Serial.println(pwmReward1);
+      }
+      else if (rewardChannel == '2') {
+        pwmReward2 = pwmVal;
+        Serial.print("PWM2 set to ");
+        Serial.println(pwmReward2);
+      }
+    }
+
+    else if (c == 'M') {
+      while (Serial.available() < 2) {}
+      int relayIndex = Serial.read() - '1';     // 1-based to 0-based
+      int rewardGroup = Serial.read() - '0';    // '1' or '2'
+
+      if (relayIndex >= 0 && relayIndex < NUM_RELAYS && (rewardGroup == 1 || rewardGroup == 2)) {
+        RELAY_TO_REWARD[relayIndex] = rewardGroup;
+        Serial.print("Mapped Relay ");
+        Serial.print(relayIndex + 1);
+        Serial.print(" to Reward ");
+        Serial.println(rewardGroup);
+      }
+    }
   }
 
-  // Relay control logic (placeholder)
+  // Relay activation logic based on reward group
   if (relayControlEnabled) {
     long readings[NUM_SENSORS];
     for (int i = 0; i < NUM_SENSORS; i++) {
       readings[i] = sensors[i]->capacitiveSensor(80);
     }
 
-    // Example: activate relays based on sensor 0
-    if (relayActive[0]) digitalWrite(RELAY_PINS[0], readings[0] > 2500 ? LOW : HIGH);
-    if (relayActive[1]) digitalWrite(RELAY_PINS[1], readings[0] > 2500 ? LOW : HIGH);
-    // Add more relay logic if needed
+    for (int i = 0; i < NUM_RELAYS; i++) {
+      if (relayActive[i]) {
+        int rewardGroup = RELAY_TO_REWARD[i];
+        if (rewardGroup == 1) {
+          digitalWrite(RELAY_PINS[i], pwmReward1 > 0 ? LOW : HIGH);
+        }
+        else if (rewardGroup == 2) {
+          digitalWrite(RELAY_PINS[i], pwmReward2 > 0 ? LOW : HIGH);
+        }
+        else {
+          digitalWrite(RELAY_PINS[i], HIGH);  // Default: OFF
+        }
+      }
+    }
   }
 }

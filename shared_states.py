@@ -1,5 +1,8 @@
 # Serial Communication
 import serial
+import dearpygui as dpg
+
+
 ser1 = serial.Serial('COM10', 115200, timeout=1)
 ser2 = serial.Serial('COM11', 115200, timeout=1)
 
@@ -31,6 +34,43 @@ pending_protocol_save = None
 csv_file = None
 csv_writer = None
 
+protocol_template = {
+    "experiment_type": "Open-Field Experiment",
+    "protocol_name": "ExampleName",
+    "num_rewards": 2,
+    "pwm_reward1": 255,
+    "pwm_reward2": 255,
+    "light_sphere": {
+        "size": 40.0,
+        "location_mode": "random",
+        "dwell_time_threshold": 2.0
+    },
+    "trial_settings": {
+        "mode": "fixed_trials",
+        "trial_count": 100,
+        "session_duration": 1800.0
+    },
+    "ymaze_settings": {
+        "enabled": False,
+        "cue_switch_probability": 0.5
+    },
+    "phase_length_settings": {
+        "trial_phase_length": 10.0,
+        "intertrial_phase_length": 5.0,
+        "phase_length_mode": "time"
+    },
+    "led_configuration": {
+        "mode": "single"
+    },
+    "digital_analog_outputs": {
+        "session_start": {"enabled": False, "frequency": 0},
+        "intertrial_phase": {"enabled": False, "frequency": 0},
+        "light_sphere_dwell": {"enabled": False, "frequency": 0},
+        "reward_phase": {"enabled": False, "frequency": 0},
+        "reward_port_licks": {"enabled": False, "frequency": 0}
+    }
+}
+
 # camera stuff
 
 CAMERA_WIDTH = 1440
@@ -42,6 +82,7 @@ is_recording = False
 
 # GUI stuff
 
+
 buttons_trials = {}
 buttons_lickports1 = {}
 buttons_lickports2 = {}
@@ -50,5 +91,5 @@ plots_initialized = False
 frame_counter = 0
 label_table = [[1,2,3,4,5,6,7,8],[9,10,11,12,13,14,15,16]]
 trial_labels = [["Reward-Phase", "Intertrial-Phase"]]
-MAX_POINTS = 300
-UPDATE_PLOT_EVERY_N_FRAMES = 2
+MAX_POINTS = 200
+UPDATE_PLOT_EVERY_N_FRAMES = 3
