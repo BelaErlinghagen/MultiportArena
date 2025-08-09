@@ -55,6 +55,10 @@ def finalize_protocol_file(protocol_data, overwrite=False):
         return False
     with open(filename, "w") as f:
         json.dump(protocol_data, f, indent=4)
+    if shared_states.current_mouse_file:
+        mouse_folder_path = os.path.dirname(os.path.abspath(shared_states.current_mouse_file))
+        with open(f"{mouse_folder_path}\\{shared_states.current_session_name}\\Protocol_{protocol_name}.json", "w") as f:
+            json.dump(protocol_data, f, indent = 4)
     dpg.set_value("protocol_file_path", filename)
     shared_states.current_protocol = protocol_data
     shared_states.protocol_file_path = filename
@@ -140,8 +144,13 @@ def protocol_selected(sender, app_data):
         with open(file_path, "r") as f:
             protocol = json.load(f)
         shared_states.current_protocol = protocol
+        if shared_states.current_mouse_file:
+            mouse_folder_path = os.path.dirname(os.path.abspath(shared_states.current_mouse_file))
+            with open(f"{mouse_folder_path}\\{shared_states.current_session_name}\\Protocol_{protocol["ProtocolName"]}.json", "w") as f:
+                json.dump(protocol, f, indent = 4)
         dpg.set_value("protocol_file_path", file_path)
         print(f"[LOADED] Protocol from {file_path}")
+        shared_states.protocol_loaded = True
         update_protocol_summary()
         check_ready_state()
     except Exception as e:

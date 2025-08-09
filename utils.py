@@ -11,8 +11,8 @@ import cv2
 import shared_states
 from shared_states import (
     buttons_lickports2, buttons_lickports1, remembered_relays,
-    active_theme, ser1, ser2, timestamps, current_mouse_file, current_mouse_data, 
-    current_session_name, camera_texture_tag, CAMERA_HEIGHT, CAMERA_WIDTH
+    active_theme, ser1, ser2, timestamps,
+    camera_texture_tag, CAMERA_HEIGHT, CAMERA_WIDTH
 )
 
 
@@ -174,8 +174,8 @@ def toggle_trial_button(sender, button_dict, active_theme, ser1, ser2):
                 dpg.set_value(tag, True)
 
 def toggle_lickport_button(sender, button_dict, port_label, active_theme):
-    global current_mouse_data, current_mouse_file
-
+    current_mouse_data = shared_states.current_mouse_data
+    current_mouse_file = shared_states.current_mouse_file
     gui_relay_number = int(sender.split("_")[1])
     other_dict = buttons_lickports2 if button_dict is buttons_lickports1 else buttons_lickports1
     other_port = "2" if port_label == "1" else "1"
@@ -204,11 +204,10 @@ def toggle_lickport_button(sender, button_dict, port_label, active_theme):
 
             # Append relay state with timestamp to current_mouse_data
             if current_mouse_data and current_mouse_file:
-                print(current_mouse_file)
                 relay_sessions = current_mouse_data.setdefault("relay_sessions", {})
                 timestamp = timestamps[0][-1] if timestamps[0] else time.strftime("%Y-%m-%d %H:%M:%S")
                 entry = [remembered_relays.get('1'), remembered_relays.get('2'), timestamp]
-                relay_sessions.setdefault(current_session_name, []).append(entry)
+                relay_sessions.setdefault(shared_states.current_session_name, []).append(entry)
                 # Save back to disk
                 with open(current_mouse_file, "w") as f:
                     json.dump(current_mouse_data, f, indent=4)

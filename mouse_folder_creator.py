@@ -74,11 +74,10 @@ def finalize_mouse_file(mouse_id, notes, base_dir, overwrite=False):
     with open(paths["json_path"], "w") as f:
         json.dump(mouse_json, f, indent=4)
 
-    global current_mouse_data, current_mouse_file, current_session_name
-    current_mouse_data = mouse_json
-    current_mouse_file = paths["json_path"]
-    current_session_name = paths["session_name"]
-    dpg.set_value("mouse_file_path", current_mouse_file)
+    shared_states.current_mouse_data = mouse_json
+    shared_states.current_mouse_file = paths["json_path"]
+    shared_states.current_session_name = paths["session_name"]
+    dpg.set_value("mouse_file_path", shared_states.current_mouse_file)
     print(f"[INFO] Mouse file and folder created at: {paths['mouse_folder']}")
     check_ready_state()
 
@@ -144,18 +143,16 @@ def setup_session_folder(mouse_folder_path, session_name):
     return session_folder
 
 def mouse_file_selected(sender, app_data):
-    global current_mouse_file, current_mouse_data
     mouse_file = app_data['file_path_name']
-    current_mouse_file = mouse_file
+    shared_states.current_mouse_file = mouse_file
     global mouse_folder_path
     mouse_folder_path = os.path.dirname(os.path.abspath(mouse_file))
 
     if mouse_file.endswith(".json"):
         dpg.set_value("mouse_file_path", mouse_file)
         with open(mouse_file, "r") as f:
-            global current_mouse_data
-            current_mouse_data = json.load(f)
-
+            shared_states.current_mouse_data = json.load(f)
+        current_mouse_data = shared_states.current_mouse_data
         dpg.configure_item("session_prompt_popup", show=True)
         relay_sessions = current_mouse_data.get("relay_sessions", {})
         if relay_sessions:
@@ -170,18 +167,20 @@ def mouse_file_selected(sender, app_data):
         check_ready_state()
 
 def confirm_session_number():
-    global current_mouse_data, current_session_name
+    current_mouse_data = shared_states.current_mouse_data
+
     session_num = dpg.get_value("session_input")
     if not session_num.strip().isdigit():
         print("Invalid session number.")
         return
 
     session_tag = f"session{int(session_num)}"
-    current_session_name = session_tag
+    shared_states.current_session_name = session_tag
 
     if session_tag not in current_mouse_data["relay_sessions"]:
         current_mouse_data["relay_sessions"][session_tag] = []
-        current_session_path = setup_session_folder(mouse_folder_path, current_session_name)
+        current_session_path = setup_session_folder(mouse_folder_path, session_tag)
+        shared_states.current_session_path = current_session_path
 
     print(f"Using session: {session_tag}")
     dpg.configure_item("session_prompt_popup", show=False)

@@ -344,7 +344,7 @@ def build_gui():
 
                         dpg.add_separator()
 
-                        # # Protocol Summary and Hardware Test
-                        # with dpg.group(horizontal=True, parent="right_side_group"):
-                        #     update_protocol_summary(parent="right_side_group")
-                        #     create_hardware_test_panel(parent="right_side_group")
+                        # Protocol Summary and Hardware Test
+                        with dpg.group(horizontal=True, parent="right_side_group"):
+                            update_protocol_summary(parent="right_side_group")
+                            create_hardware_test_panel(parent="right_side_group")
