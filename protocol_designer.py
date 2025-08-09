@@ -151,7 +151,7 @@ def protocol_selected(sender, app_data):
         dpg.set_value("protocol_file_path", file_path)
         print(f"[LOADED] Protocol from {file_path}")
         shared_states.protocol_loaded = True
-        update_protocol_summary()
+        #update_protocol_summary(parent=dpg.)
         check_ready_state()
     except Exception as e:
         print(f"[ERROR] Failed to load protocol: {e}")

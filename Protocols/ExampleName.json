@@ -1,0 +1,52 @@
+{
+    "experiment_type": "Open-Field Experiment",
+    "ProtocolName": "ExampleName",
+    "Comments": "",
+    "num_rewards": 2,
+    "pwm_reward1": 255,
+    "pwm_reward2": 255,
+    "light_sphere": {
+        "size": 40.0,
+        "location_mode": "random",
+        "dwell_time_threshold": 2.0
+    },
+    "trial_settings": {
+        "mode": "fixed_trials",
+        "trial_count": 100,
+        "session_duration": 1800.0
+    },
+    "ymaze_settings": {
+        "enabled": false,
+        "cue_switch_probability": 0.5
+    },
+    "phase_length_settings": {
+        "trial_phase_length": 10.0,
+        "intertrial_phase_length": 5.0,
+        "phase_length_mode": "time"
+    },
+    "led_configuration": {
+        "mode": "single"
+    },
+    "digital_analog_outputs": {
+        "session_start": {
+            "enabled": false,
+            "frequency": 0
+        },
+        "intertrial_phase": {
+            "enabled": false,
+            "frequency": 0
+        },
+        "light_sphere_dwell": {
+            "enabled": false,
+            "frequency": 0
+        },
+        "reward_phase": {
+            "enabled": false,
+            "frequency": 0
+        },
+        "reward_port_licks": {
+            "enabled": false,
+            "frequency": 0
+        }
+    }
+}
