@@ -33,6 +33,7 @@ protocol_file_path = None
 pending_protocol_save = None
 csv_file = None
 csv_writer = None
+protocol_loaded = False
 
 protocol_template = {
     "experiment_type": "Open-Field Experiment",

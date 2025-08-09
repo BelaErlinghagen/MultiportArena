@@ -15,7 +15,6 @@ from utils import (
 from gui_functions import build_gui, append_sensor_data
 
 
-
 def main_loop():
     global plots_initialized, frame_counter
     if ser1 is None or ser2 is None:
@@ -82,7 +81,6 @@ def main_loop():
 def main():
     initialize_serial_connections()
     build_gui()
-
     dpg.show_viewport()
     print("Starting GUI loop...")
 

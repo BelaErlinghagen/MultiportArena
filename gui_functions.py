@@ -60,52 +60,45 @@ def append_sensor_data(ts, values, port, sensor_mapping, timestamps, data_buffer
         data_buffers[idx].append(val)
         shift_data_window(data_buffers[idx], max_points)
 
-def add_recording_buttons():
-    with dpg.group(horizontal=True):
-        dpg.add_button(
-            label="Start Recording",
-            tag="start_recording_button",
-            callback=start_recording_callback,
-            width=150,
-            height=120,
-            pos=(1600, 870)  # try some visible position on the screen
-        )
-        dpg.add_button(
-            label="Stop Recording",
-            tag="stop_recording_button",
-            callback=stop_recording_callback,
-            width=150,
-            height=120,
-            pos=(1800, 870)
-        )
-
 def show_main_window():
         dpg.hide_item("intro_window")
         dpg.show_item("main_window")
 
-def setup_camera_ui():
-    """Sets up the black texture and image widget"""
+def setup_camera_ui(parent=None, ui_width=-1):
+    """Scaled camera feed that fills parent width if ui_width=-1."""
     global camera_initialized
     if camera_initialized:
         return
 
+    if ui_width == -1:
+        # Estimate width based on parent container
+        ui_width = dpg.get_item_width(parent) or 500
+
+    ui_height = int(ui_width * CAMERA_HEIGHT / CAMERA_WIDTH)
+
     black_frame = get_camera_frame()
     black_frame = cv2.cvtColor(black_frame, cv2.COLOR_BGR2RGBA)
-    black_frame = np.flip(black_frame, 0) / 255.0  # Normalize for DPG
+    black_frame = np.flip(black_frame, 0) / 255.0
 
-    # You MUST add textures inside a texture registry
     with dpg.texture_registry(show=False):
         dpg.add_static_texture(CAMERA_WIDTH, CAMERA_HEIGHT, black_frame, tag=camera_texture_tag)
 
-    # Now place the image inside a child window or layout container
-    with dpg.child_window(label="Camera Feed", width=CAMERA_WIDTH + 20, height=CAMERA_HEIGHT + 40, pos=[1100, 10]):
-        dpg.add_image(camera_texture_tag, tag=camera_image_tag)
+    with dpg.child_window(label="Camera Feed",
+                          width=ui_width,
+                          height=ui_height + 40,
+                          parent=parent):
+        dpg.add_image(camera_texture_tag, tag=camera_image_tag,
+                      width=ui_width, height=ui_height)
 
     camera_initialized = True
 
+
 ### Hardware Testing Panel
-def create_hardware_test_panel():
-    with dpg.collapsing_header(label="Hardware Test Panel", default_open=False):
+def create_hardware_test_panel(parent="hardware_test_container", width=250):
+    with dpg.child_window(parent=parent, width=width, height=500):
+        dpg.add_text("=== Hardware Test Panel ===", color=(50, 200, 200))
+        dpg.add_separator()
+
         dpg.add_text("LED Control")
         dpg.add_input_int(label="LED Number (1-16)", tag="test_led_number", min_value=1, max_value=16)
         dpg.add_button(label="LED ON", callback=lambda: set_led(None, dpg.get_value("test_led_number"), True))
@@ -134,62 +127,71 @@ def create_hardware_test_panel():
 
 
 
-def update_protocol_summary():
-    if not hasattr(shared_states, 'current_protocol'):
+
+def update_protocol_summary(parent="protocol_summary_container", width=250):
+    if shared_states.protocol_loaded == False:
+        protocol = shared_states.protocol_template
+    else:
+        protocol = shared_states.current_protocol
+
+    if protocol is None:
         return
 
-    protocol = shared_states.current_protocol
-
-    if dpg.does_item_exist("protocol_summary_group"):
-        dpg.delete_item("protocol_summary_group", children_only=True)
+    if dpg.does_item_exist(parent):
+        dpg.delete_item(parent, children_only=True)
     else:
-        with dpg.group(horizontal=True, parent="main_window") as summary_group:
-            dpg.add_group(tag="protocol_summary_group")
+        return
 
-    with dpg.group(parent="protocol_summary_group"):
-        dpg.add_text(f"Protocol: {protocol['ProtocolName']}")
-        dpg.add_text(f"Comments: {protocol.get('Comments', '')}")
-        dpg.add_text(f"Experiment Type: {protocol.get('experiment_type', '')}")
+    with dpg.child_window(parent=parent, width=width, height=500):  # scrollable if long
+        dpg.add_text("=== Protocol Summary ===", color=(200, 200, 50))
+        dpg.add_separator()
+        dpg.add_text(f"Protocol: {protocol.get('protocol_name', 'N/A')}")
+        dpg.add_text(f"Experiment Type: {protocol.get('experiment_type', 'N/A')}")
+
         if protocol.get('experiment_type') == "Open-Field Experiment":
-            dpg.add_text(f"Number of Rewards: {protocol['num_rewards']}")
-            dpg.add_text(f"PWM Reward 1: {protocol['pwm_reward1']}")
-            dpg.add_text(f"PWM Reward 2: {protocol['pwm_reward2']}")
-            dpg.add_text(f"Light Sphere Size: {protocol['light_sphere']['size']}")
-            dpg.add_text(f"Light Sphere Location Mode: {protocol['light_sphere']['location_mode']}")
-            dpg.add_text(f"LED Mode: {protocol['led_configuration']['mode']}")
-        dpg.add_text(f"Dwell Time Threshold: {protocol['light_sphere']['dwell_time_threshold']}")
-        trial_mode = "Fixed amount of trials" if protocol['trial_settings']['mode'] == "fixed_trials" else "Fixed amount of time"
-        dpg.add_text(f"Trial Mode: {trial_mode}")
-        if protocol['trial_settings']['mode'] == "fixed_trials":
-            dpg.add_text(f"Trial Count: {protocol['trial_settings']['trial_count']}")
-        else:
-            dpg.add_text(f"Session Duration: {protocol['trial_settings']['session_duration']} seconds")
-        if protocol.get('experiment_type') == "Y-Maze":
-            dpg.add_text(f"Y-Maze Enabled: {protocol['ymaze_settings']['enabled']}")
-            dpg.add_text(f"Cue Switch Probability: {protocol['ymaze_settings']['cue_switch_probability']}")
-        phase_length_mode = "Time" if protocol['phase_length_settings']['phase_length_mode'] == "time" else "Mouse position"
-        dpg.add_text(f"Phase Length Mode: {phase_length_mode}")
-        dpg.add_text(f"Trial Phase Length: {protocol['phase_length_settings']['trial_phase_length']}")
-        dpg.add_text(f"Intertrial Phase Length: {protocol['phase_length_settings']['intertrial_phase_length']}")
+            dpg.add_text(f"Number of Rewards: {protocol.get('num_rewards', 'N/A')}")
+            dpg.add_text(f"PWM Reward 1: {protocol.get('pwm_reward1', 'N/A')}")
+            dpg.add_text(f"PWM Reward 2: {protocol.get('pwm_reward2', 'N/A')}")
+            light_sphere = protocol.get('light_sphere', {})
+            dpg.add_text(f"Light Sphere Size: {light_sphere.get('size', 'N/A')}")
+            dpg.add_text(f"Light Sphere Location Mode: {light_sphere.get('location_mode', 'N/A')}")
+            dpg.add_text(f"Dwell Time Threshold: {light_sphere.get('dwell_time_threshold', 'N/A')}")
+            led_config = protocol.get('led_configuration', {})
+            dpg.add_text(f"LED Mode: {led_config.get('mode', 'N/A')}")
 
-    window_width = dpg.get_item_width("main_window")
-    dpg.set_item_pos("protocol_summary_group", [window_width - 300, dpg.get_item_height("main_window") - 400])
+        trial_settings = protocol.get('trial_settings', {})
+        mode = trial_settings.get('mode', 'N/A')
+        trial_mode = "Fixed amount of trials" if mode == "fixed_trials" else "Fixed amount of time"
+        dpg.add_text(f"Trial Mode: {trial_mode}")
+        if mode == "fixed_trials":
+            dpg.add_text(f"Trial Count: {trial_settings.get('trial_count', 'N/A')}")
+        else:
+            dpg.add_text(f"Session Duration: {trial_settings.get('session_duration', 'N/A')} seconds")
+
+        if protocol.get('experiment_type') == "Y-Maze":
+            ymaze = protocol.get('ymaze_settings', {})
+            dpg.add_text(f"Y-Maze Enabled: {ymaze.get('enabled', 'N/A')}")
+            dpg.add_text(f"Cue Switch Probability: {ymaze.get('cue_switch_probability', 'N/A')}")
+
+        phase_length = protocol.get('phase_length_settings', {})
+        phase_length_mode = phase_length.get('phase_length_mode', 'N/A')
+        phase_length_mode_text = "Time" if phase_length_mode == "time" else "Mouse position"
+        dpg.add_text(f"Phase Length Mode: {phase_length_mode_text}")
+        dpg.add_text(f"Trial Phase Length: {phase_length.get('trial_phase_length', 'N/A')}")
+        dpg.add_text(f"Intertrial Phase Length: {phase_length.get('intertrial_phase_length', 'N/A')}")
+
+
 
 
 def build_gui():
     global active_theme
     screen_width, screen_height = get_screen_dimensions()
-
-
     dpg.create_context()
     setup_fonts()
     dpg.create_viewport(title='Multiport', width=screen_width, height=screen_height)
     dpg.setup_dearpygui()
     dpg.set_viewport_pos([0, 0])
-
     active_theme = setup_button_theme()
-
-
 
     # === Welcome Window ===
     welcome_width = 600
@@ -206,30 +208,24 @@ def build_gui():
                                               callback=lambda: print("Cleaning protocol..."))
                 dpg.bind_item_theme(run_button, active_theme)
                 dpg.bind_item_theme(clean_button, active_theme)
-
             with dpg.group(tag="experiment_setup_group", show=False):
                 dpg.add_separator()
-
                 # Mouse File section
                 dpg.add_text("Mouse File")
                 with dpg.group(horizontal=True):
                     dpg.add_input_text(tag="mouse_file_path", readonly=True)
                     dpg.add_button(label="Browse", callback=lambda: dpg.show_item("mouse_file_dialog"))
                     dpg.add_button(label="New Folder", callback=lambda: dpg.show_item("new_mouse_file_window"))
-
                 # Protocol File section
                 dpg.add_text("Protocol File")
                 with dpg.group(horizontal=True):
                     dpg.add_input_text(tag="protocol_file_path", readonly=True)
                     dpg.add_button(label="Browse", callback=lambda: dpg.show_item("protocol_file_dialog"))
-                    # UPDATED: use new protocol designer
                     dpg.add_button(label="New Protocol", callback=show_protocol_designer)
-
                 dpg.add_button(label="Start Experiment", tag="start_experiment_button",
                                callback=show_main_window, show=False)
 
-    dpg.set_item_pos("intro_window",
-                     [(screen_width - welcome_width) // 2, (screen_height - welcome_height) // 2])
+    dpg.set_item_pos("intro_window", [(screen_width - welcome_width) // 2, (screen_height - welcome_height) // 2])
 
     # File dialogs
     with dpg.file_dialog(directory_selector=False, show=False, callback=mouse_file_selected,
@@ -253,7 +249,7 @@ def build_gui():
     with dpg.file_dialog(directory_selector=True, show=False, callback=save_mouse_file_dialog_callback,
                          tag="mouse_save_dialog", width=700, height=400):
         dpg.add_file_extension(".json", color=(0, 255, 0, 255))
-    
+
     # Mouse overwrite popup
     with dpg.window(modal=True, show=False, tag="mouse_overwrite_popup", label="Overwrite Mouse Folder?"):
         dpg.add_text("A mouse folder with this name already exists. Overwrite?")
@@ -279,60 +275,76 @@ def build_gui():
     with dpg.window(label="Main Window", tag="main_window", show=False,
                     no_resize=True, no_move=True,
                     width=screen_width, height=screen_height):
+        with dpg.table(header_row=False):
+            # Define two fixed-width columns
+            dpg.add_table_column(width_fixed=True, init_width_or_weight=screen_width/2)  # LEFT SIDE
+            dpg.add_table_column(width_fixed=True, init_width_or_weight=screen_width/2)   # RIGHT SIDE
+            with dpg.table_row():
+                # ==== LEFT SIDE ====
+                with dpg.table_cell():
+                    # Trial Phase
+                    dpg.add_spacer(height=50)
+                    dpg.add_text("Trial Phase", indent=480)
+                    with dpg.group(horizontal=True):
+                        with dpg.table(width=1100, header_row=False):
+                            dpg.add_table_column()
+                            dpg.add_table_column()
+                            with dpg.table_row():
+                                for label in trial_labels[0]:
+                                    tag = f"button{label}"
+                                    dpg.add_button(
+                                        label=label,
+                                        tag=tag,
+                                        width=220,
+                                        height=60,
+                                        indent=150,
+                                        callback=lambda s=tag: toggle_trial_button(
+                                            s, buttons_trials, active_theme, ser1, ser2
+                                        )
+                                    )
+                                    buttons_trials[tag] = {"checked": False}
 
-        with dpg.group(horizontal=False):
-            dpg.add_spacer(width=50, height=50)
-            dpg.add_text("Trial Phase", indent=480)
-            with dpg.group(horizontal=True):
-                with dpg.table(width=1100, header_row=False):
-                    dpg.add_table_column()
-                    dpg.add_table_column()
-                    with dpg.table_row():
-                        for label in trial_labels[0]:
-                            tag = f"button{label}"
-                            dpg.add_button(
-                                label=label,
-                                tag=tag,
-                                width=220,
-                                height=60,
-                                indent=150,
-                                callback=lambda s=tag: toggle_trial_button(s, buttons_trials, active_theme, ser1, ser2)
-                            )
-                            buttons_trials[tag] = {"checked": False}
+                    # Reward Tables
+                    dpg.add_spacer(height=100)
+                    with dpg.group():
+                        dpg.add_text("Reward 1", indent=500)
+                        create_reward_table("button1", buttons_lickports1)
+                    with dpg.group():
+                        dpg.add_text("Reward 2", indent=500)
+                        create_reward_table("button2", buttons_lickports2)
 
-            # Relay tables
-            dpg.add_spacer(width=50, height=100)
-            with dpg.group():
-                dpg.add_text("Reward 1", indent=500)
-                create_reward_table("button1", buttons_lickports1)
+                    # Sensor Plots
+                    dpg.add_text("Sensor Plots:")
+                    with dpg.table(header_row=False, resizable=False,
+                                   policy=dpg.mvTable_SizingFixedFit,
+                                   borders_innerV=True, borders_outerH=True,
+                                   width=screen_width - 100):
+                        cols = 4
+                        for _ in range(cols):
+                            dpg.add_table_column()
+                        for i in range(0, 16, cols):
+                            with dpg.table_row():
+                                for j in range(cols):
+                                    idx = i + j
+                                    if idx >= 16:
+                                        break
+                                    with dpg.table_cell():
+                                        create_sensor_plot(idx)
 
-            with dpg.group():
-                dpg.add_text("Reward 2", indent=500)
-                create_reward_table("button2", buttons_lickports2)
+                # ==== RIGHT SIDE ====
+                with dpg.table_cell():
+                    with dpg.group(tag="right_side_group"):
+                        # Camera Feed
+                        setup_camera_ui(parent="right_side_group")
 
-            # Sensor plots
-            dpg.add_text("Sensor Plots:")
-            with dpg.table(header_row=False, resizable=False,
-                           policy=dpg.mvTable_SizingFixedFit,
-                           borders_innerV=True, borders_outerH=True,
-                           width=screen_width - 100):
-                cols = 4
-                for _ in range(cols):
-                    dpg.add_table_column()
-                for i in range(0, 16, cols):
-                    with dpg.table_row():
-                        for j in range(cols):
-                            idx = i + j
-                            if idx >= 16:
-                                break
-                            with dpg.table_cell():
-                                create_sensor_plot(idx)
+                        # Recording Buttons
+                        with dpg.group(horizontal=True, parent="right_side_group"):
+                            dpg.add_button(label="Start Recording", tag="start_recording_button", callback=start_recording_callback, width=200, height=100)
+                            dpg.add_button(label="Stop Recording", tag="stop_recording_button", callback=stop_recording_callback, width=200, height=100)
 
-            # Camera feed
-            setup_camera_ui()
+                        dpg.add_separator()
 
-            # Hardware test panel
-            create_hardware_test_panel()
-
-            # Recording buttons
-            add_recording_buttons()
+                        # # Protocol Summary and Hardware Test
+                        # with dpg.group(horizontal=True, parent="right_side_group"):
+                        #     update_protocol_summary(parent="right_side_group")
+                        #     create_hardware_test_panel(parent="right_side_group")

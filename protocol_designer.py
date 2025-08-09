@@ -131,6 +131,7 @@ def save_protocol():
 
 def protocol_selected(sender, app_data):
     from utils import check_ready_state
+    from gui_functions import update_protocol_summary
     """Load protocol from file and populate UI."""
     file_path = app_data["file_path_name"]
     if not file_path:
@@ -141,6 +142,7 @@ def protocol_selected(sender, app_data):
         shared_states.current_protocol = protocol
         dpg.set_value("protocol_file_path", file_path)
         print(f"[LOADED] Protocol from {file_path}")
+        update_protocol_summary()
         check_ready_state()
     except Exception as e:
         print(f"[ERROR] Failed to load protocol: {e}")
