@@ -47,6 +47,7 @@ def toggle_phase_length_settings():
 
 def finalize_protocol_file(protocol_data, overwrite=False):
     from utils import check_ready_state
+    from gui_functions import fill_protocol_summary
     protocol_name = protocol_data["ProtocolName"]
     filename = f"Protocols/{protocol_name}.json"
     if not overwrite and os.path.exists(filename):
@@ -63,6 +64,7 @@ def finalize_protocol_file(protocol_data, overwrite=False):
     shared_states.current_protocol = protocol_data
     shared_states.protocol_file_path = filename
     print(f"[SAVED] Protocol saved to {filename}")
+    fill_protocol_summary(protocol_data)
     check_ready_state()
     return True
 
@@ -135,7 +137,7 @@ def save_protocol():
 
 def protocol_selected(sender, app_data):
     from utils import check_ready_state
-    from gui_functions import update_protocol_summary
+    from gui_functions import fill_protocol_summary
     """Load protocol from file and populate UI."""
     file_path = app_data["file_path_name"]
     if not file_path:
@@ -151,47 +153,11 @@ def protocol_selected(sender, app_data):
         dpg.set_value("protocol_file_path", file_path)
         print(f"[LOADED] Protocol from {file_path}")
         shared_states.protocol_loaded = True
-        #update_protocol_summary(parent=dpg.)
+        fill_protocol_summary(protocol)
         check_ready_state()
     except Exception as e:
         print(f"[ERROR] Failed to load protocol: {e}")
 
-def set_protocol_values(protocol):
-   # Set UI fields
-    dpg.set_value("protocol_name", protocol.get("ProtocolName", ""))
-    dpg.set_value("protocol_comments", protocol.get("Comments", ""))
-    dpg.set_value("experiment_type", protocol.get("experiment_type", "Open-Field Experiment"))
-    toggle_experiment_settings()
-
-    dpg.set_value("num_rewards", str(protocol.get("num_rewards", 2)))
-    dpg.set_value("pwm_reward1", protocol.get("pwm_reward1", 255))
-    dpg.set_value("pwm_reward2", protocol.get("pwm_reward2", 255))
-    dpg.set_value("led_mode", protocol.get("led_configuration", {}).get("mode", "single"))
-
-    dpg.set_value("light_sphere_location_mode", protocol.get("light_sphere", {}).get("location_mode", "random"))
-    dpg.set_value("light_sphere_size", protocol.get("light_sphere", {}).get("size", 40.0))
-    dpg.set_value("dwell_time_threshold", protocol.get("light_sphere", {}).get("dwell_time_threshold", 2.0))
-
-    trial_mode = "Fixed amount of trials" if protocol.get("trial_settings", {}).get("mode") == "fixed_trials" else "Fixed amount of time"
-    dpg.set_value("trial_mode", trial_mode)
-    toggle_trial_settings()
-    dpg.set_value("trial_count", protocol.get("trial_settings", {}).get("trial_count", 100))
-    dpg.set_value("session_duration", protocol.get("trial_settings", {}).get("session_duration", 1800.0))
-
-    dpg.set_value("ymaze_enabled", protocol.get("ymaze_settings", {}).get("enabled", False))
-    dpg.set_value("cue_switch_probability", protocol.get("ymaze_settings", {}).get("cue_switch_probability", 0.5))
-
-    phase_length_mode = "Time" if protocol.get("phase_length_settings", {}).get("phase_length_mode") == "time" else "Mouse position"
-    dpg.set_value("phase_length_mode", phase_length_mode)
-    toggle_phase_length_settings()
-    dpg.set_value("trial_phase_length", protocol.get("phase_length_settings", {}).get("trial_phase_length", 10.0))
-    dpg.set_value("intertrial_phase_length", protocol.get("phase_length_settings", {}).get("intertrial_phase_length", 5.0))
-
-    for key in protocol.get("digital_analog_outputs", {}):
-        settings = protocol["digital_analog_outputs"][key]
-        dpg.set_value(f"enable_{key}_output", settings.get("enabled", False))
-        dpg.set_value(f"{key}_frequency", settings.get("frequency", 0))
-    
 
 # ===========================
 # Main UI Builder
