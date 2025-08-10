@@ -247,6 +247,11 @@ def start_recording_callback():
         shared_states.csv_writer.writerow(["timestamp"] + [f"sensor_{i+1}" for i in range(16)])
     
         shared_states.is_recording = True
+        try:
+            if getattr(shared_states, "trial_controller", None):
+                shared_states.trial_controller.start_session()
+        except Exception as e:
+            print(f"[TRIAL] Could not start TrialController: {e}")
         print(f"[RECORDING STARTED] -> {sensor_csv_path}")
         dpg.bind_item_theme("start_recording_button", active_theme)
         dpg.bind_item_theme("stop_recording_button", None)
@@ -255,6 +260,8 @@ def start_recording_callback():
     dpg.split_frame()
 
 def stop_recording_callback():
+    if getattr(shared_states, "trial_controller", None):
+        shared_states.trial_controller.stop_session()
     shared_states.is_recording = False
     dpg.bind_item_theme("start_recording_button", None)
     dpg.bind_item_theme("stop_recording_button", active_theme)

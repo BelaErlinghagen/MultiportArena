@@ -19,6 +19,8 @@ remembered_relays = {
 data_buffers = [[] for _ in range(16)]  # Support for 16 sensors
 timestamps = [[] for _ in range(16)]
 
+trial_controller = None
+
 #file management stuff
 
 mouse_folder_path = ""

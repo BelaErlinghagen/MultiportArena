@@ -7,6 +7,8 @@ from shared_states import (
     UPDATE_PLOT_EVERY_N_FRAMES, sensor_mapping, data_buffers, 
     timestamps, plots_initialized, frame_counter, MAX_POINTS)
 import shared_states
+import trial_functionality
+shared_states.trial_controller = trial_functionality.TrialController()
 from utils import (
     clean_serial_line, update_plot_series,
     parse_sensor_line, initialize_serial_connections,

@@ -65,6 +65,7 @@ def finalize_protocol_file(protocol_data, overwrite=False):
     shared_states.protocol_file_path = filename
     print(f"[SAVED] Protocol saved to {filename}")
     fill_protocol_summary(protocol_data)
+    shared_states.trial_controller.load_protocol(protocol_data)
     check_ready_state()
     return True
 
@@ -154,6 +155,7 @@ def protocol_selected(sender, app_data):
         print(f"[LOADED] Protocol from {file_path}")
         shared_states.protocol_loaded = True
         fill_protocol_summary(protocol)
+        shared_states.trial_controller.load_protocol(protocol)
         check_ready_state()
     except Exception as e:
         print(f"[ERROR] Failed to load protocol: {e}")
