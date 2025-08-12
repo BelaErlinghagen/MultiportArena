@@ -19,10 +19,20 @@ from gui_functions import build_gui, append_sensor_data
 
 def main_loop():
     global plots_initialized, frame_counter
+
+    while shared_states.gui_actions:
+        try:
+            action = shared_states.gui_actions.pop(0)
+            action()
+        except Exception as e:
+            print(f"[GUI ACTION ERROR]: {e}")
+
+    
     if ser1 is None or ser2 is None:
         time.sleep(0.1)
         dpg.render_dearpygui_frame()
         return
+
 
     # Get frame from camera (mock or real)
     frame = get_camera_frame()

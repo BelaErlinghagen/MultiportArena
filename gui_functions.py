@@ -39,7 +39,7 @@ def create_reward_table(prefix, button_dict):
                         tag=tag,
                         width=100,
                         height=40,
-                        callback=(lambda s=tag, d=button_dict, p=prefix[-1]: lambda: toggle_lickport_button(s, d, p, active_theme))()
+                        callback=(lambda s=tag, d=button_dict, p=prefix[-1]: lambda: toggle_lickport_button(s, d, p, shared_states.active_theme))()
                     )
                     button_dict[tag] = {"checked": False}
 
@@ -220,14 +220,13 @@ def fill_protocol_summary(protocol):
 
 
 def build_gui():
-    global active_theme
     screen_width, screen_height = get_screen_dimensions()
     dpg.create_context()
     setup_fonts()
     dpg.create_viewport(title='Multiport', width=screen_width, height=screen_height)
     dpg.setup_dearpygui()
     dpg.set_viewport_pos([0, 0])
-    active_theme = setup_button_theme()
+    shared_states.active_theme = setup_button_theme()
 
     # === Welcome Window ===
     welcome_width = 600
@@ -242,8 +241,8 @@ def build_gui():
                                             callback=lambda: dpg.show_item("experiment_setup_group"))
                 clean_button = dpg.add_button(label="Cleaning", width=200,
                                               callback=lambda: print("Cleaning protocol..."))
-                dpg.bind_item_theme(run_button, active_theme)
-                dpg.bind_item_theme(clean_button, active_theme)
+                dpg.bind_item_theme(run_button, shared_states.active_theme)
+                dpg.bind_item_theme(clean_button, shared_states.active_theme)
             with dpg.group(tag="experiment_setup_group", show=False):
                 dpg.add_separator()
                 # Mouse File section
@@ -335,7 +334,7 @@ def build_gui():
                                         height=60,
                                         indent=150,
                                         callback=lambda s=tag: toggle_trial_button(
-                                            s, buttons_trials, active_theme, ser1, ser2
+                                            s, buttons_trials, shared_states.active_theme, ser1, ser2
                                         )
                                     )
                                     buttons_trials[tag] = {"checked": False}

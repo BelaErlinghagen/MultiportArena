@@ -180,11 +180,9 @@ def toggle_lickport_button(sender, button_dict, port_label, active_theme):
     other_dict = buttons_lickports2 if button_dict is buttons_lickports1 else buttons_lickports1
     other_port = "2" if port_label == "1" else "1"
     conflicting_tag = f"button{other_port}_{gui_relay_number}"
-
     if other_dict.get(conflicting_tag, {}).get("checked"):
         print(f"[BLOCKED] Relay {gui_relay_number} is already active in the other group.")
         return
-
     for tag, info in button_dict.items():
         if tag != sender:
             info["checked"] = False
@@ -230,10 +228,10 @@ def update_camera_feed():
 def render_callback(sender, data):
     update_camera_feed()  # Update live feed image every frame
 
+
 ### Data saving
 
 def start_recording_callback():
-    global  active_theme
     try:
         if not shared_states.current_session_path:
             print("[ERROR] No session path set.")
@@ -242,29 +240,30 @@ def start_recording_callback():
         sensor_csv_path = os.path.join(shared_states.current_session_path, "sensor_data.csv")
         shared_states.csv_file = open(sensor_csv_path, mode='w', newline='')
         shared_states.csv_writer = csv.writer(shared_states.csv_file)
-    
-        # Header: timestamp + 16 sensor values
         shared_states.csv_writer.writerow(["timestamp"] + [f"sensor_{i+1}" for i in range(16)])
-    
+
         shared_states.is_recording = True
-        try:
-            if getattr(shared_states, "trial_controller", None):
-                shared_states.trial_controller.start_session()
-        except Exception as e:
-            print(f"[TRIAL] Could not start TrialController: {e}")
         print(f"[RECORDING STARTED] -> {sensor_csv_path}")
-        dpg.bind_item_theme("start_recording_button", active_theme)
+        
+        dpg.bind_item_theme("start_recording_button", shared_states.active_theme)
         dpg.bind_item_theme("stop_recording_button", None)
+
     except Exception as e:
         print(f"[ERROR] in start_recording_callback: {e}")
-    dpg.split_frame()
+    try:
+        if getattr(shared_states, "trial_controller", None):
+            shared_states.trial_controller.start_session()
+    except Exception as e:
+        print(f"[TRIAL] Could not start TrialController: {e}")
 
 def stop_recording_callback():
+    shared_states.is_recording = False
     if getattr(shared_states, "trial_controller", None):
         shared_states.trial_controller.stop_session()
-    shared_states.is_recording = False
+    
     dpg.bind_item_theme("start_recording_button", None)
-    dpg.bind_item_theme("stop_recording_button", active_theme)
+    dpg.bind_item_theme("stop_recording_button", shared_states.active_theme)
+
     if shared_states.csv_file:
         shared_states.csv_file.close()
         print("[RECORDING STOPPED]")

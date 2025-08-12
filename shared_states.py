@@ -85,7 +85,7 @@ is_recording = False
 
 # GUI stuff
 
-
+gui_actions = []
 buttons_trials = {}
 buttons_lickports1 = {}
 buttons_lickports2 = {}
