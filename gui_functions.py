@@ -126,97 +126,70 @@ def create_hardware_test_panel(parent, width=250, height=500):
     dpg.pop_container_stack()
 
 
-def update_protocol_summary(parent):
-    # Clear previous children if any
-    if dpg.does_item_exist(parent):
-        dpg.delete_item(parent, children_only=True)
+def update_protocol_summary(container_tag=None):
+    protocol = getattr(shared_states, "current_protocol", None)
+
+    if not protocol:
+        summary = "No protocol loaded."
     else:
-        return
+        lines = []
+        lines.append(f"Protocol: {protocol.get('protocol_name', 'Unnamed')}")
+        lines.append(f"Experiment: {protocol.get('experiment_type', 'Unknown')}")
+        lines.append("")
 
-    dpg.push_container_stack(parent)
-    dpg.add_text("=== Protocol Summary ===", color=(200, 200, 50), tag="protocol_summary_header")
-    dpg.add_separator()
+        mode = protocol.get("trial_settings", {}).get("mode", "fixed_trials")
+        lines.append("Trial settings:")
+        if mode == "fixed_trials":
+            lines.append(f"Mode: fixed_trials, count={protocol['trial_settings'].get('trial_count', 0)}")
+        else:
+            lines.append(f"Mode: fixed_time, duration={protocol['trial_settings'].get('session_duration', 0)} s")
+        lines.append("")
 
-    # Create text elements with fixed tags for updating later
-    dpg.add_text(f"Protocol: N/A", tag="protocol_name_text")
-    dpg.add_text(f"Experiment Type: N/A", tag="experiment_type_text")
+        lines.append("Phase lengths:")
+        pl = protocol.get("phase_length_settings", {})
+        lines.append(f"Mode: {pl.get('phase_length_mode', 'time')}")
+        lines.append(f"Trial phase: {pl.get('trial_phase_length', 0)} s")
+        lines.append(f"Intertrial phase: {pl.get('intertrial_phase_length', 0)} s")
+        lines.append("")
 
-    dpg.add_text(f"Number of Rewards: N/A", tag="num_rewards_text")
-    dpg.add_text(f"PWM Reward 1: N/A", tag="pwm_reward1_text")
-    dpg.add_text(f"PWM Reward 2: N/A", tag="pwm_reward2_text")
-    dpg.add_text(f"Light Sphere Size: N/A", tag="light_sphere_size_text")
-    dpg.add_text(f"Light Sphere Location Mode: N/A", tag="light_sphere_location_mode_text")
-    dpg.add_text(f"Dwell Time Threshold: N/A", tag="light_sphere_dwell_time_text")
-    dpg.add_text(f"LED Mode: N/A", tag="led_mode_text")
+        num_rewards = protocol.get("num_rewards", 0)
+        lines.append(f"Rewards: {num_rewards}")
+        lines.append(f"Reward 1: PWM={protocol.get('pwm_reward1', 255)}, "
+                     f"Probability={protocol.get('reward1_probability', 1.0):.2f}")
+        lines.append(f"Reward 2: PWM={protocol.get('pwm_reward2', 255)}, "
+                     f"Probability={protocol.get('reward2_probability', 1.0):.2f}")
+        lines.append("")
 
-    dpg.add_text(f"Trial Mode: N/A", tag="trial_mode_text")
-    dpg.add_text(f"Trial Count: N/A", tag="trial_count_text")
-    dpg.add_text(f"Session Duration: N/A", tag="session_duration_text")
+        lines.append("LED configuration:")
+        lines.append(f"Mode: {protocol.get('led_configuration', {}).get('mode', 'single')}")
+        lines.append("")
 
-    dpg.add_text(f"Y-Maze Enabled: N/A", tag="ymaze_enabled_text")
-    dpg.add_text(f"Cue Switch Probability: N/A", tag="cue_switch_prob_text")
+        ls = protocol.get("light_sphere", {})
+        lines.append("Light sphere:")
+        lines.append(f"Size: {ls.get('size', 'n/a')}")
+        lines.append(f"Location: {ls.get('location_mode', 'n/a')}")
+        lines.append(f"Dwell threshold: {ls.get('dwell_time_threshold', 'n/a')} s")
+        lines.append("")
 
-    dpg.add_text(f"Phase Length Mode: N/A", tag="phase_length_mode_text")
-    dpg.add_text(f"Trial Phase Length: N/A", tag="trial_phase_length_text")
-    dpg.add_text(f"Intertrial Phase Length: N/A", tag="intertrial_phase_length_text")
+        ym = protocol.get("ymaze_settings", {})
+        lines.append("Y-Maze:")
+        lines.append(f"Enabled: {ym.get('enabled', False)}")
+        if ym.get("enabled", False):
+            lines.append(f"Cue switch probability: {ym.get('cue_switch_probability', 0.5)}")
+        lines.append("")
 
-    dpg.pop_container_stack()
+        dao = protocol.get("digital_analog_outputs", {})
+        lines.append("Digital/Analog output triggers:")
+        for evt, cfg in dao.items():
+            lines.append(f"{evt}: enabled={cfg.get('enabled', False)}, freq={cfg.get('frequency', 0)}")
 
-def fill_protocol_summary(protocol):
-    # Update all text widgets by their tags
-    dpg.set_value("protocol_name_text", f"Protocol: {protocol.get('protocol_name', 'N/A')}")
-    dpg.set_value("experiment_type_text", f"Experiment Type: {protocol.get('experiment_type', 'N/A')}")
+        summary = "\n".join(lines)
 
-    # Only update Open-Field Experiment specific fields if relevant
-    if protocol.get('experiment_type') == "Open-Field Experiment":
-        dpg.set_value("num_rewards_text", f"Number of Rewards: {protocol.get('num_rewards', 'N/A')}")
-        dpg.set_value("pwm_reward1_text", f"PWM Reward 1: {protocol.get('pwm_reward1', 'N/A')}")
-        dpg.set_value("pwm_reward2_text", f"PWM Reward 2: {protocol.get('pwm_reward2', 'N/A')}")
-        light_sphere = protocol.get('light_sphere', {})
-        dpg.set_value("light_sphere_size_text", f"Light Sphere Size: {light_sphere.get('size', 'N/A')}")
-        dpg.set_value("light_sphere_location_mode_text", f"Light Sphere Location Mode: {light_sphere.get('location_mode', 'N/A')}")
-        dpg.set_value("light_sphere_dwell_time_text", f"Dwell Time Threshold: {light_sphere.get('dwell_time_threshold', 'N/A')}")
-        led_config = protocol.get('led_configuration', {})
-        dpg.set_value("led_mode_text", f"LED Mode: {led_config.get('mode', 'N/A')}")
+    if container_tag:
+        dpg.delete_item(container_tag, children_only=True)
+        dpg.add_text(summary, parent=container_tag)
     else:
-        # Hide or clear fields irrelevant to this experiment type
-        dpg.set_value("num_rewards_text", "")
-        dpg.set_value("pwm_reward1_text", "")
-        dpg.set_value("pwm_reward2_text", "")
-        dpg.set_value("light_sphere_size_text", "")
-        dpg.set_value("light_sphere_location_mode_text", "")
-        dpg.set_value("light_sphere_dwell_time_text", "")
-        dpg.set_value("led_mode_text", "")
-
-    # Trial settings
-    trial_settings = protocol.get('trial_settings', {})
-    mode = trial_settings.get('mode', 'N/A')
-    trial_mode = "Fixed amount of trials" if mode == "fixed_trials" else "Fixed amount of time"
-    dpg.set_value("trial_mode_text", f"Trial Mode: {trial_mode}")
-    if mode == "fixed_trials":
-        dpg.set_value("trial_count_text", f"Trial Count: {trial_settings.get('trial_count', 'N/A')}")
-        dpg.set_value("session_duration_text", "")
-    else:
-        dpg.set_value("trial_count_text", "")
-        dpg.set_value("session_duration_text", f"Session Duration: {trial_settings.get('session_duration', 'N/A')} seconds")
-
-    # Y-Maze specific settings
-    if protocol.get('experiment_type') == "Y-Maze":
-        ymaze = protocol.get('ymaze_settings', {})
-        dpg.set_value("ymaze_enabled_text", f"Y-Maze Enabled: {ymaze.get('enabled', 'N/A')}")
-        dpg.set_value("cue_switch_prob_text", f"Cue Switch Probability: {ymaze.get('cue_switch_probability', 'N/A')}")
-    else:
-        dpg.set_value("ymaze_enabled_text", "")
-        dpg.set_value("cue_switch_prob_text", "")
-
-    # Phase length settings
-    phase_length = protocol.get('phase_length_settings', {})
-    phase_length_mode = phase_length.get('phase_length_mode', 'N/A')
-    phase_length_mode_text = "Time" if phase_length_mode == "time" else "Mouse position"
-    dpg.set_value("phase_length_mode_text", f"Phase Length Mode: {phase_length_mode_text}")
-    dpg.set_value("trial_phase_length_text", f"Trial Phase Length: {phase_length.get('trial_phase_length', 'N/A')}")
-    dpg.set_value("intertrial_phase_length_text", f"Intertrial Phase Length: {phase_length.get('intertrial_phase_length', 'N/A')}")
-
+        return summary
 
 
 def build_gui():
@@ -402,5 +375,5 @@ def build_gui():
                                     create_hardware_test_panel(dpg.last_container())
 
                                 with dpg.child_window(width=400, height=500, tag="protocol_summary_child_window"):
-                                    update_protocol_summary(dpg.last_container())
+                                    update_protocol_summary("protocol_summary_child_window")
 

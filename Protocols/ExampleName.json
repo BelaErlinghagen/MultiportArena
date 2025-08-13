@@ -1,10 +1,12 @@
 {
     "experiment_type": "Open-Field Experiment",
-    "ProtocolName": "ExampleName",
+    "protocol_name": "ExampleName",
     "Comments": "",
     "num_rewards": 2,
     "pwm_reward1": 255,
     "pwm_reward2": 255,
+    "reward1_probability": 1.0,
+    "reward2_probability": 0.19999992847442627,
     "light_sphere": {
         "size": 40.0,
         "location_mode": "random",

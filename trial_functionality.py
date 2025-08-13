@@ -21,41 +21,55 @@ class TrialController:
         self.protocol: Dict[str, Any] = {}
         self.thread: Optional[threading.Thread] = None
         self.stop_event = threading.Event()
+        self.pause_event = threading.Event()  # reserved if you want pause/resume
         self.session_running = False
 
         # runtime variables
         self.current_trial_index = 0
         self.collected_rewards = set()
         self.trial_count_target: Optional[int] = None
-        self.session_duration_target: Optional[float] = None
+        self.session_duration_target: Optional[float] = None  # seconds
         self.session_start_time: Optional[float] = None
 
         # parsed config (defaults)
-        self.phase_length_mode = "time"
+        self.phase_length_mode = "time"  # or "position"
         self.trial_phase_length = 10.0
         self.intertrial_phase_length = 5.0
         self.num_rewards = 0
-        self.remembered_relays = shared_states.remembered_relays  # live reference (strings like 'button1_1')
-        self.led_mode = "single"  # 'single' / 'neighbour' / 'all' (you said you'll add 'all' later)
-        self.neighbour_leds_map = getattr(shared_states, "neighbour_leds_map", {})
+        self.reward1_probability = float(self.protocol.get("reward1_probability", 1.0))
+        self.reward2_probability = float(self.protocol.get("reward2_probability", 1.0))
+        self.reward_prob_enabled = (self.reward1_probability < 1.0 or self.reward2_probability < 1.0)
+        self.remembered_relays = shared_states.remembered_relays  # live reference
+        self.led_mode = "single"  # 'single' or 'neighbour' or 'all'
+        self.neighbour_leds_map = getattr(shared_states, "neighbour_leds_map", {})  # optional
         self.experiment_type = "Open-Field Experiment"
         self.ymaze_settings = {}
         self.light_sphere_cfg = {}
-        self.trial_mode = "fixed_trials"
-        self.mock_dlc_mode = "static"
-        self.mock_mouse_pos = (0.5, 0.5)
-        self.light_sphere_state = None
+        self.trial_mode = "fixed_trials"  # 'fixed_trials' or 'fixed_time'
+        self.mock_dlc_mode = "static"  # 'static' or 'random_walk' (for the mock)
+        self.mock_mouse_pos = (0.5, 0.5)  # normalized arena coordinates [0..1]
+        self.light_sphere_state = None  # (x, y, size)
         self.event_log_file = None
         self.event_log_writer = None
         self.event_log_path = None
 
     # ---- Protocol parsing and setup ----
     def load_protocol(self, protocol: Dict[str, Any]):
+        """
+        Provide a protocol dictionary (the same format you already use).
+        This function extracts the fields relevant to trial control.
+        """
         self.protocol = protocol or {}
+        # experiment type
         self.experiment_type = self.protocol.get("experiment_type", self.experiment_type)
+
+        # light sphere settings (Open-Field)
         self.light_sphere_cfg = self.protocol.get("light_sphere", {})
+
+        # LED config
         self.led_mode = (self.protocol.get("led_configuration", {}).get("mode") or self.led_mode)
 
+        # trial settings
         trial_settings = self.protocol.get("trial_settings", {})
         if trial_settings.get("mode") == "fixed_trials":
             self.trial_mode = "fixed_trials"
@@ -66,15 +80,31 @@ class TrialController:
             self.trial_count_target = None
             self.session_duration_target = trial_settings.get("session_duration")
 
+        # phase length settings
         phase_length = self.protocol.get("phase_length_settings", {})
         self.phase_length_mode = phase_length.get("phase_length_mode", self.phase_length_mode)
         self.trial_phase_length = float(phase_length.get("trial_phase_length", self.trial_phase_length))
         self.intertrial_phase_length = float(phase_length.get("intertrial_phase_length", self.intertrial_phase_length))
+
+        # rewards
         self.num_rewards = int(self.protocol.get("num_rewards", self.num_rewards))
+
+        # y-maze
         self.ymaze_settings = self.protocol.get("ymaze_settings", {})
 
+        # neighbour map fallback (create ring if not set)
         if not self.neighbour_leds_map:
             self.neighbour_leds_map = self._default_neighbour_map(16)
+
+        # NEW: reward probability gating
+        rp = self.protocol.get("reward_probability", {})
+        self.reward_prob_enabled = bool(rp.get("enabled", False))
+        per_reward = rp.get("per_reward", {})
+        # normalize keys to strings, clamp to [0,1]
+        self.reward_prob_map = {
+            str(k): max(0.0, min(1.0, float(v)))
+            for k, v in per_reward.items()
+        }
 
         print("[TRIAL] Protocol loaded into TrialController.")
         print(f"       Experiment type: {self.experiment_type}")
@@ -83,6 +113,10 @@ class TrialController:
             print(f"       Trial count target: {self.trial_count_target}")
         else:
             print(f"       Session duration target: {self.session_duration_target}s")
+        if self.reward_prob_enabled:
+            print(f"       Reward probability gating ON: {self.reward_prob_map}")
+        else:
+            print("       Reward probability gating OFF")
 
     @staticmethod
     def _default_neighbour_map(n_relays: int) -> Dict[int, List[int]]:
@@ -132,6 +166,8 @@ class TrialController:
         self.session_running = False
         self._cleanup_after_session()
         self._trigger_output("session_stop")
+        from utils import stop_recording_callback
+        shared_states.gui_actions.append(lambda: stop_recording_callback)
         print("[TRIAL] Session stopped by user or end condition.")
         if self.event_log_file:
             try:
@@ -340,14 +376,13 @@ class TrialController:
                         t, shared_states.buttons_lickports1, "1", shared_states.active_theme
                     )
                 )
-                print(shared_states.buttons_lickports1)
             elif port_str == "2":
                 shared_states.gui_actions.append(
                     lambda t=tag_key: toggle_lickport_button(
                         t, shared_states.buttons_lickports2, "2", shared_states.active_theme
                     )
                 )
-                print(shared_states.buttons_lickports2)
+
 
     # ---- Mock DLC & reward sensing ----
     def _get_mouse_position(self) -> Tuple[float, float]:
@@ -362,13 +397,38 @@ class TrialController:
         return (x, y)
 
     def _mock_maybe_collect_reward(self):
+        """
+        Mock behavior that occasionally 'collects' a reward.
+        In the real system, you'd check lick sensors / DLC events.
+
+        With reward-probability gating enabled, each detected lick on reward i
+        only dispenses if random() <= p_i.
+        """
         if self.num_rewards <= 0:
             return
+
+        # 1% chance per call to detect a lick
         if random.random() < 0.01:
             reward_id = random.randint(1, max(1, self.num_rewards))
-            self.collected_rewards.add(reward_id)
-            print(f"[TRIAL] Mock: reward {reward_id} collected ({len(self.collected_rewards)}/{self.num_rewards}).")
-            self._trigger_output("reward_port_licks")
+            # always log the lick event (this is the animal action)
+            self._trigger_output("reward_port_licks", details=f"lick_on_reward_{reward_id}")
+
+            dispense = True
+            if self.reward_prob_enabled:
+                if reward_id == 1:
+                    dispense = (random.random() <= self.reward1_probability)
+                elif reward_id == 2:
+                    dispense = (random.random() <= self.reward2_probability)
+
+            if dispense:
+                # count as collected only if actually dispensed
+                self.collected_rewards.add(reward_id)
+                print(f"[TRIAL] Mock: reward {reward_id} DISPENSED "
+                    f"(collected {len(self.collected_rewards)}/{self.num_rewards}).")
+                self._trigger_output("reward_dispensed", details=f"reward_{reward_id}")
+            else:
+                print(f"[TRIAL] Mock: reward {reward_id} WITHHELD by probability gate.")
+                self._trigger_output("reward_withheld", details=f"reward_{reward_id}")
 
     def _project_light_sphere(self, pos: Tuple[float, float], size: float):
         x, y = pos

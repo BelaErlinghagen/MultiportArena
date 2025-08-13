@@ -47,8 +47,7 @@ def toggle_phase_length_settings():
 
 def finalize_protocol_file(protocol_data, overwrite=False):
     from utils import check_ready_state
-    from gui_functions import fill_protocol_summary
-    protocol_name = protocol_data["ProtocolName"]
+    protocol_name = protocol_data["protocol_name"]
     filename = f"Protocols/{protocol_name}.json"
     if not overwrite and os.path.exists(filename):
         dpg.configure_item("protocol_overwrite_popup", show=True)
@@ -64,7 +63,8 @@ def finalize_protocol_file(protocol_data, overwrite=False):
     shared_states.current_protocol = protocol_data
     shared_states.protocol_file_path = filename
     print(f"[SAVED] Protocol saved to {filename}")
-    fill_protocol_summary(protocol_data)
+    from gui_functions import update_protocol_summary
+    update_protocol_summary("protocol_summary_child_window")    
     shared_states.trial_controller.load_protocol(protocol_data)
     check_ready_state()
     return True
@@ -84,11 +84,13 @@ def save_protocol():
     """Gather UI values and save protocol to JSON."""
     protocol_data = {
         "experiment_type": dpg.get_value("experiment_type"),
-        "ProtocolName": dpg.get_value("protocol_name"),
+        "protocol_name": dpg.get_value("protocol_name"),
         "Comments": dpg.get_value("protocol_comments"),
         "num_rewards": int(dpg.get_value("num_rewards")),
         "pwm_reward1": dpg.get_value("pwm_reward1"),
         "pwm_reward2": dpg.get_value("pwm_reward2"),
+        "reward1_probability": dpg.get_value("reward1_probability"),
+        "reward2_probability": dpg.get_value("reward2_probability"),
         "light_sphere": {
             "size": dpg.get_value("light_sphere_size"),
             "location_mode": dpg.get_value("light_sphere_location_mode"),
@@ -138,7 +140,6 @@ def save_protocol():
 
 def protocol_selected(sender, app_data):
     from utils import check_ready_state
-    from gui_functions import fill_protocol_summary
     """Load protocol from file and populate UI."""
     file_path = app_data["file_path_name"]
     if not file_path:
@@ -149,12 +150,13 @@ def protocol_selected(sender, app_data):
         shared_states.current_protocol = protocol
         if shared_states.current_mouse_file:
             mouse_folder_path = os.path.dirname(os.path.abspath(shared_states.current_mouse_file))
-            with open(f"{mouse_folder_path}\\{shared_states.current_session_name}\\Protocol_{protocol["ProtocolName"]}.json", "w") as f:
+            with open(f"{mouse_folder_path}\\{shared_states.current_session_name}\\Protocol_{protocol["protocol_name"]}.json", "w") as f:
                 json.dump(protocol, f, indent = 4)
         dpg.set_value("protocol_file_path", file_path)
         print(f"[LOADED] Protocol from {file_path}")
         shared_states.protocol_loaded = True
-        fill_protocol_summary(protocol)
+        from gui_functions import update_protocol_summary
+        update_protocol_summary("protocol_summary_child_window")
         shared_states.trial_controller.load_protocol(protocol)
         check_ready_state()
     except Exception as e:
@@ -179,10 +181,16 @@ def create_protocol_designer_gui():
             # Rewards
             with dpg.tab(label="Rewards", tag="reward_settings_group"):
                 dpg.add_combo(label="Number of Rewards", items=["1", "2"], default_value=str(defaults["num_rewards"]), tag="num_rewards")
-                dpg.add_slider_int(label="PWM Reward 1", default_value=defaults["pwm_reward1"], max_value=255, tag="pwm_reward1")
-                dpg.add_slider_int(label="PWM Reward 2", default_value=defaults["pwm_reward2"], max_value=255, tag="pwm_reward2")
+                dpg.add_input_int(label="PWM Reward 1", default_value=defaults["pwm_reward1"], max_value=255, tag="pwm_reward1")
+                dpg.add_input_int(label="PWM Reward 2", default_value=defaults["pwm_reward2"], max_value=255, tag="pwm_reward2")
                 with dpg.group(tag="led_configuration_group"):
                     dpg.add_combo(label="LED Mode", items=["single", "neighbor", "all"], default_value=defaults["led_configuration"]["mode"], tag="led_mode")
+                with dpg.group(horizontal=True):
+                    dpg.add_text("Reward 1 Probability:")
+                    dpg.add_input_float(tag="reward1_probability", default_value=defaults.get("reward1_probability", 1.0), min_value=0.0, max_value=1.0, format="%.2f")
+                with dpg.group(horizontal=True):
+                    dpg.add_text("Reward 2 Probability:")
+                    dpg.add_input_float(tag="reward2_probability", default_value=defaults.get("reward2_probability", 1.0), min_value=0.0, max_value=1.0, format="%.2f")
 
             # Light Sphere
             with dpg.tab(label="Light Sphere", tag="light_sphere_settings_group"):

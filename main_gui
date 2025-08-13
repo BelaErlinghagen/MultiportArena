@@ -5,7 +5,9 @@ import os
 from shared_states import (
     ser1, ser2,
     UPDATE_PLOT_EVERY_N_FRAMES, sensor_mapping, data_buffers, 
-    timestamps, plots_initialized, frame_counter, MAX_POINTS)
+    timestamps, plots_initialized, frame_counter, MAX_POINTS,
+    TARGET_FPS
+)
 import shared_states
 import trial_functionality
 shared_states.trial_controller = trial_functionality.TrialController()
@@ -16,10 +18,18 @@ from utils import (
 )
 from gui_functions import build_gui, append_sensor_data
 
+# Performance tracking
+FRAME_PERIOD = 1.0 / TARGET_FPS
+loop_times = []
+last_time = time.perf_counter()
+perf_log = []  # store (timestamp, loop_time, fps)
 
 def main_loop():
-    global plots_initialized, frame_counter
+    global plots_initialized, frame_counter, last_time
 
+    start_time = time.perf_counter()
+
+    # Process queued GUI actions first
     while shared_states.gui_actions:
         try:
             action = shared_states.gui_actions.pop(0)
@@ -27,17 +37,15 @@ def main_loop():
         except Exception as e:
             print(f"[GUI ACTION ERROR]: {e}")
 
-    
     if ser1 is None or ser2 is None:
         time.sleep(0.1)
         dpg.render_dearpygui_frame()
         return
 
-
-    # Get frame from camera (mock or real)
+    # Get frame from camera
     frame = get_camera_frame()
     if frame is not None:
-        update_camera_feed()  # Show in GUI
+        update_camera_feed()
 
     # Always read sensors
     ser1.write(b's')
@@ -48,7 +56,6 @@ def main_loop():
     ts1, vals1 = parse_sensor_line(line1)
     ts2, vals2 = parse_sensor_line(line2)
 
-    # Append to buffers for live plotting
     if ts1:
         append_sensor_data(ts1, vals1, "ser1", sensor_mapping, timestamps, data_buffers, MAX_POINTS)
     if ts2:
@@ -65,8 +72,17 @@ def main_loop():
             if vals2:
                 for i, val in enumerate(vals2):
                     combined_vals[i + 8] = val
-            shared_states.csv_writer.writerow([timestamp] + combined_vals)
-            shared_states.csv_file.flush()
+            # Append row to in-memory buffer
+            shared_states.csv_buffer.append([timestamp] + combined_vals)
+
+            # Flush periodically
+            if len(shared_states.csv_buffer) >= shared_states.CSV_FLUSH_EVERY_N:
+                try:
+                    shared_states.csv_writer.writerows(shared_states.csv_buffer)
+                    shared_states.csv_file.flush()
+                    shared_states.csv_buffer.clear()
+                except Exception as e:
+                    print(f"[WARNING] Failed to flush CSV buffer: {e}")
         else:
             print("[WARNING] csv_writer is None!")
         if shared_states.current_session_path and frame is not None:
@@ -90,18 +106,49 @@ def main_loop():
 
     dpg.render_dearpygui_frame()
 
+    # --- Performance tracking ---
+    end_time = time.perf_counter()
+    loop_duration = end_time - start_time
+    fps = 1.0 / loop_duration if loop_duration > 0 else 0.0
+
+    loop_times.append(loop_duration)
+    if len(loop_times) > 300:  # ~10 seconds at 30Hz
+        loop_times.pop(0)
+
+    perf_log.append((time.strftime("%Y-%m-%d %H:%M:%S"), loop_duration, fps))
+
+    if len(perf_log) % int(TARGET_FPS * 5) == 0:  # every ~5 seconds
+        avg_fps = len(loop_times) / sum(loop_times) if sum(loop_times) > 0 else 0.0
+        print(f"[PERF] Avg FPS (last 5s): {avg_fps:.2f}")
+
+    # --- Maintain target FPS ---
+    sleep_time = FRAME_PERIOD - loop_duration
+    if sleep_time > 0:
+        time.sleep(sleep_time)
+    last_time = end_time
+
+
 def main():
     initialize_serial_connections()
     build_gui()
     dpg.show_viewport()
-    print("Starting GUI loop...")
+    print(f"Starting GUI loop at target {TARGET_FPS} FPS...")
 
     while dpg.is_dearpygui_running():
         main_loop()
 
+    # Save performance log if recording session exists
+    if shared_states.current_session_path:
+        perf_file = os.path.join(shared_states.current_session_path, "loop_performance.csv")
+        with open(perf_file, "w") as f:
+            f.write("timestamp,loop_time,fps\n")
+            for ts, lt, fps in perf_log:
+                f.write(f"{ts},{lt:.6f},{fps:.2f}\n")
+        print(f"[PERF] Loop performance saved to {perf_file}")
+
     print("GUI closed. Destroying context.")
     dpg.destroy_context()
 
+
 if __name__ == "__main__":
     main()
-

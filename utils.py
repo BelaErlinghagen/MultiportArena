@@ -264,6 +264,12 @@ def stop_recording_callback():
     dpg.bind_item_theme("start_recording_button", None)
     dpg.bind_item_theme("stop_recording_button", shared_states.active_theme)
 
+    if shared_states.csv_buffer:
+        shared_states.csv_writer.writerows(shared_states.csv_buffer)
+        shared_states.csv_file.flush()
+        shared_states.csv_buffer.clear()
+
+
     if shared_states.csv_file:
         shared_states.csv_file.close()
         print("[RECORDING STOPPED]")
@@ -281,7 +287,7 @@ def update_plot_series(tag, x_data, y_data):
 
 def setup_fonts():
     with dpg.font_registry():
-        default_font = dpg.add_font("Dependencies/lemon_milk/LEMONMILK-Regular.otf", 18)
+        default_font = dpg.add_font("Dependencies/BerlinSans/BRLNSR.TTF", 20)
     dpg.bind_font(default_font)
 
 def setup_button_theme():

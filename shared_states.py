@@ -5,7 +5,7 @@ import dearpygui as dpg
 
 ser1 = serial.Serial('COM10', 115200, timeout=1)
 ser2 = serial.Serial('COM11', 115200, timeout=1)
-
+TARGET_FPS = 30
 sensor_mapping = {
     "ser1": [1, 2],  # Maps ser1 values to sensors 1 and 2
     "ser2": [9],     # Maps ser2 values to sensor 9
@@ -36,6 +36,9 @@ pending_protocol_save = None
 csv_file = None
 csv_writer = None
 protocol_loaded = False
+# Buffer for sensor CSV writing
+csv_buffer = []
+CSV_FLUSH_EVERY_N = 60  # flush every ~1 sec if running at 30Hz
 
 protocol_template = {
     "experiment_type": "Open-Field Experiment",
@@ -43,6 +46,8 @@ protocol_template = {
     "num_rewards": 2,
     "pwm_reward1": 255,
     "pwm_reward2": 255,
+    "reward1_probability": 1.0,  # 100% default
+    "reward2_probability": 1.0,  # 100% default
     "light_sphere": {
         "size": 40.0,
         "location_mode": "random",
