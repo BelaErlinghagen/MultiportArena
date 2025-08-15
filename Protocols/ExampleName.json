@@ -2,7 +2,7 @@
     "experiment_type": "Open-Field Experiment",
     "protocol_name": "ExampleName",
     "Comments": "",
-    "num_rewards": 1,
+    "num_rewards": 2,
     "pwm_reward1": null,
     "pwm_reward2": null,
     "reward1_probability": 1.0,

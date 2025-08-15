@@ -1,7 +1,6 @@
 # Serial Communication
 import serial
-import dearpygui as dpg
-
+from collections import deque
 
 ser1 = serial.Serial('COM10', 115200, timeout=1)
 ser2 = serial.Serial('COM11', 115200, timeout=1)
@@ -16,8 +15,10 @@ remembered_relays = {
     "2": None   # For Reward 2
 }
 
-data_buffers = [[] for _ in range(16)]  # Support for 16 sensors
-timestamps = [[] for _ in range(16)]
+timestamps = {}     
+data_buffers = {}    
+gui_time_buffers = [deque(maxlen=500) for _ in range(16)]
+gui_plot_buffers = [deque(maxlen=500) for _ in range(16)]
 
 trial_controller = None
 
@@ -84,11 +85,13 @@ import threading
 
 last_camera_frame = None
 camera_lock = threading.Lock()
-CAMERA_WIDTH = 1440
-CAMERA_HEIGHT = 810
-camera_texture_tag = "camera_texture"
-camera_image_tag = "camera_image"
-camera_initialized = False
+
+engine_instance = None
+plot_thread = None
+plot_window_ref = None
+plot_qt_app = None
+plot_stop_event = threading.Event()
+
 is_recording = False
 
 # GUI stuff
@@ -108,7 +111,3 @@ UPDATE_PLOT_EVERY_N_FRAMES = 3
 plot_update_buffer = [[] for _ in range(16)]  # same indexing as data_buffers
 PLOT_UPDATE_INTERVAL = 0.3
 last_plot_update_time = 0
-
-# Engine/GUI bridge buffers (thin, for plotting)
-gui_plot_buffers = None   # will be [deque] x16
-gui_time_buffers = None   # will be [deque] x16

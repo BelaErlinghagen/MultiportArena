@@ -166,7 +166,7 @@ class TrialController:
         self.session_running = False
         self._cleanup_after_session()
         self._trigger_output("session_stop")
-        from utils import stop_recording_callback
+        from gui_functions import stop_recording_callback
         shared_states.gui_actions.append(lambda: stop_recording_callback)
         print("[TRIAL] Session stopped by user or end condition.")
         if self.event_log_file:

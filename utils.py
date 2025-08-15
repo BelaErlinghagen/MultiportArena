@@ -1,19 +1,15 @@
 import dearpygui.dearpygui as dpg
 import ctypes
-import os
 import json
 import time
 import serial
-import csv
 import numpy as np
-import cv2
 
 import shared_states
 from shared_states import (
-    buttons_lickports2, buttons_lickports1, remembered_relays,
-    active_theme, ser1, ser2, timestamps,
-    camera_texture_tag, CAMERA_HEIGHT, CAMERA_WIDTH
+    buttons_lickports2, buttons_lickports1, remembered_relays, ser1, ser2, timestamps
 )
+
 
 
 ### Serial connection functions
@@ -203,8 +199,9 @@ def toggle_lickport_button(sender, button_dict, port_label, active_theme):
             # Append relay state with timestamp to current_mouse_data
             if current_mouse_data and current_mouse_file:
                 relay_sessions = current_mouse_data.setdefault("relay_sessions", {})
-                timestamp = timestamps[0][-1] if timestamps[0] else time.strftime("%Y-%m-%d %H:%M:%S")
-                entry = [remembered_relays.get('1'), remembered_relays.get('2'), timestamp]
+                #timestamp = timestamps[0][-1] if timestamps[0] else time.strftime("%Y-%m-%d %H:%M:%S")
+                #entry = [remembered_relays.get('1'), remembered_relays.get('2'), timestamp]
+                entry = [remembered_relays.get('1'), remembered_relays.get('2')]
                 relay_sessions.setdefault(shared_states.current_session_name, []).append(entry)
                 # Save back to disk
                 with open(current_mouse_file, "w") as f:
@@ -217,63 +214,7 @@ def toggle_lickport_button(sender, button_dict, port_label, active_theme):
 
 def get_camera_frame():
     # Return a dummy black frame if real camera is not available
-    return np.zeros((CAMERA_HEIGHT, CAMERA_WIDTH, 3), dtype=np.uint8)
-
-def update_camera_feed():
-    black_frame = get_camera_frame()
-    black_frame = cv2.cvtColor(black_frame, cv2.COLOR_BGR2RGBA)
-    black_frame = np.flip(black_frame, 0) / 255.0
-    dpg.set_value(camera_texture_tag, black_frame)
-
-def render_callback(sender, data):
-    update_camera_feed()  # Update live feed image every frame
-
-
-### Data saving
-
-def start_recording_callback():
-    try:
-        if not shared_states.current_session_path:
-            print("[ERROR] No session path set.")
-            return
-
-        sensor_csv_path = os.path.join(shared_states.current_session_path, "sensor_data.csv")
-        shared_states.csv_file = open(sensor_csv_path, mode='w', newline='')
-        shared_states.csv_writer = csv.writer(shared_states.csv_file)
-        shared_states.csv_writer.writerow(["timestamp"] + [f"sensor_{i+1}" for i in range(16)])
-
-        shared_states.is_recording = True
-        print(f"[RECORDING STARTED] -> {sensor_csv_path}")
-        
-        dpg.bind_item_theme("start_recording_button", shared_states.active_theme)
-        dpg.bind_item_theme("stop_recording_button", None)
-
-    except Exception as e:
-        print(f"[ERROR] in start_recording_callback: {e}")
-    try:
-        if getattr(shared_states, "trial_controller", None):
-            shared_states.trial_controller.start_session()
-    except Exception as e:
-        print(f"[TRIAL] Could not start TrialController: {e}")
-
-def stop_recording_callback():
-    shared_states.is_recording = False
-    if getattr(shared_states, "trial_controller", None):
-        shared_states.trial_controller.stop_session()
-    
-    dpg.bind_item_theme("start_recording_button", None)
-    dpg.bind_item_theme("stop_recording_button", shared_states.active_theme)
-
-    if shared_states.csv_buffer:
-        shared_states.csv_writer.writerows(shared_states.csv_buffer)
-        shared_states.csv_file.flush()
-        shared_states.csv_buffer.clear()
-
-
-    if shared_states.csv_file:
-        shared_states.csv_file.close()
-        print("[RECORDING STOPPED]")
-        shared_states.csv_file = None   
+    return np.zeros((200, 200, 3), dtype=np.uint8)
 
 ### GUI functions
 def shift_data_window(data_list, max_length):

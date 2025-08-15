@@ -99,17 +99,27 @@ class Engine:
             if ts1 and vals1:
                 for i, val in enumerate(vals1):
                     sensor_id = S.sensor_mapping["ser1"][i] - 1
+                    # initialize buffers if missing
+                    if sensor_id not in S.timestamps:
+                        S.timestamps[sensor_id] = deque(maxlen=S.MAX_POINTS)
+                        S.data_buffers[sensor_id] = deque(maxlen=S.MAX_POINTS)
+                        S.gui_time_buffers[sensor_id] = deque(maxlen=200)
+                        S.gui_plot_buffers[sensor_id] = deque(maxlen=200)
+                    
                     S.timestamps[sensor_id].append(tstamp)
-                    if len(S.timestamps[sensor_id]) > S.MAX_POINTS: S.timestamps[sensor_id].pop(0)
                     S.data_buffers[sensor_id].append(val)
-                    if len(S.data_buffers[sensor_id]) > S.MAX_POINTS: S.data_buffers[sensor_id].pop(0)
             if ts2 and vals2:
                 for i, val in enumerate(vals2):
                     sensor_id = S.sensor_mapping["ser2"][i] - 1
+                    # initialize buffers if missing
+                    if sensor_id not in S.timestamps:
+                        S.timestamps[sensor_id] = deque(maxlen=S.MAX_POINTS)
+                        S.data_buffers[sensor_id] = deque(maxlen=S.MAX_POINTS)
+                        S.gui_time_buffers[sensor_id] = deque(maxlen=200)
+                        S.gui_plot_buffers[sensor_id] = deque(maxlen=200)
+                    
                     S.timestamps[sensor_id].append(tstamp)
-                    if len(S.timestamps[sensor_id]) > S.MAX_POINTS: S.timestamps[sensor_id].pop(0)
                     S.data_buffers[sensor_id].append(val)
-                    if len(S.data_buffers[sensor_id]) > S.MAX_POINTS: S.data_buffers[sensor_id].pop(0)
 
             # --- Prepare disk rows if recording ---
             if S.is_recording:
@@ -126,15 +136,14 @@ class Engine:
 
                 if S.current_session_path and frame is not None:
                     self._enqueue_frame((tstamp, frame))
-
             # --- Build thin GUI buffers at ~10 Hz ---
             now = time.perf_counter()
             if now - last_gui_push >= gui_push_period:
                 last_gui_push = now
-                for sid in range(16):
-                    if S.timestamps[sid]:
-                        S.gui_time_buffers[sid].append(S.timestamps[sid][-1])
-                        S.gui_plot_buffers[sid].append(S.data_buffers[sid][-1])
+                for sensor_id in S.timestamps.keys():
+                    if S.timestamps[sensor_id]:
+                        S.gui_time_buffers[sensor_id].append(S.timestamps[sensor_id][-1])
+                        S.gui_plot_buffers[sensor_id].append(S.data_buffers[sensor_id][-1])
 
             # TODO: DLC live processing + trial controller could go here,
             # using the same tstamp for synchronization.

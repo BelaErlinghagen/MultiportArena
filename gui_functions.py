@@ -1,18 +1,17 @@
 import dearpygui.dearpygui as dpg
-import cv2
-import numpy as np
+from engine import Engine
+import threading
 
 from shared_states import (
     label_table, buttons_lickports1, buttons_lickports2, buttons_trials,
-    ser1, ser2, trial_labels, camera_image_tag, camera_texture_tag,
-    CAMERA_HEIGHT, CAMERA_WIDTH, camera_initialized
+    ser1, ser2, trial_labels
 )
 
 import shared_states
 
 from utils import (
-    toggle_lickport_button, shift_data_window, start_recording_callback, stop_recording_callback, get_screen_dimensions,
-    setup_fonts, setup_button_theme, toggle_trial_button, set_led, send_serial_command, get_camera_frame
+    toggle_lickport_button, shift_data_window, get_screen_dimensions,
+    setup_fonts, setup_button_theme, toggle_trial_button, set_led, send_serial_command
 )
 
 from mouse_folder_creator import (
@@ -25,9 +24,66 @@ from protocol_designer import (
     protocol_selected, cancel_protocol_overwrite
 )
 
+from plot_window import start_plot_window
+
+def start_recording_callback():
+    if shared_states.engine_instance is None:
+        shared_states.engine_instance = Engine(target_hz=30)
+        shared_states.engine_instance.start()
+        print("[GUI] Engine started")
+
+    # Start plot thread if not running
+    if shared_states.plot_thread is None or not shared_states.plot_thread.is_alive():
+        # Ensure any previous stop event is cleared
+        try:
+            if getattr(shared_states, "plot_stop_event", None):
+                shared_states.plot_stop_event.clear()
+        except Exception:
+            pass
+
+        shared_states.plot_thread = threading.Thread(target=lambda: start_plot_window(update_hz=30), daemon=False)
+        shared_states.plot_thread.start()
+        print("[GUI] Plot thread started")
+    try:
+        if getattr(shared_states, "trial_controller", None):
+            shared_states.trial_controller.start_session()
+    except Exception as e:
+        print(f"[TRIAL] Could not start TrialController: {e}")
+    shared_states.is_recording = True
+    print(f"[RECORDING STARTED] -> {shared_states.current_session_path}")
+
+def stop_recording_callback():
+    shared_states.is_recording = False
+
+    if getattr(shared_states, "trial_controller", None):
+        shared_states.trial_controller.stop_session()
+
+    if shared_states.engine_instance:
+        shared_states.engine_instance.stop()
+        shared_states.engine_instance = None
+        print("[GUI] Engine stopped")
+
+    # Request plot window to close safely via its own thread
+    if hasattr(shared_states, "plot_stop_event"):
+        shared_states.plot_stop_event.set()
+
+    # Wait for plot thread to exit
+    if shared_states.plot_thread is not None:
+        print("[GUI] Waiting for plot thread to exit...")
+        shared_states.plot_thread.join(timeout=3)
+        if shared_states.plot_thread.is_alive():
+            print("[GUI] Plot thread did not exit within timeout.")
+        else:
+            print("[GUI] Plot thread exited cleanly.")
+        shared_states.plot_thread = None
+    
+    
+
+
 
 def create_reward_table(prefix, button_dict):
-    with dpg.table(width=1100, header_row=False):
+    screen_width, screen_height = get_screen_dimensions()
+    with dpg.table(width=screen_width // 2, header_row=False):
         for _ in range(8):
             dpg.add_table_column()
         for row in label_table:
@@ -43,13 +99,6 @@ def create_reward_table(prefix, button_dict):
                     )
                     button_dict[tag] = {"checked": False}
 
-def create_sensor_plot(sensor_id):
-    with dpg.plot(label=f"Sensor {sensor_id+1}", tag=f"sensor_plot_{sensor_id}", height=200, width=260):
-        dpg.add_plot_axis(dpg.mvXAxis, tag=f"sensor_plot_{sensor_id}_xaxis")
-        dpg.add_plot_axis(dpg.mvYAxis, tag=f"sensor_plot_{sensor_id}_yaxis")
-        dpg.add_line_series([], [], label=f"Sensor {sensor_id+1} data",
-                            parent=f"sensor_plot_{sensor_id}_yaxis",
-                            tag=f"sensor_plot_{sensor_id}_line")
 
 def append_sensor_data(ts, values, port, sensor_mapping, timestamps, data_buffers, max_points):
     for i, val in enumerate(values):
@@ -64,35 +113,21 @@ def append_sensor_data(ts, values, port, sensor_mapping, timestamps, data_buffer
         shared_states.plot_update_buffer[idx].append((ts, val))
 
 def show_main_window():
-        dpg.hide_item("intro_window")
-        dpg.show_item("main_window")
+    screen_width, screen_height = get_screen_dimensions()
+    # Hide the welcome window
+    dpg.hide_item("intro_window")
+    # Show the main window
+    dpg.show_item("main_window")
+    # Resize the viewport to half the screen width
+    dpg.set_viewport_width(screen_width // 2)
+    dpg.set_viewport_height(screen_height)
+    # Reposition the viewport to the left side
+    dpg.set_viewport_pos([0, 0])
+    # Optionally, resize the main window to fit the viewport
+    dpg.set_item_width("main_window", screen_width // 2)
+    dpg.set_item_height("main_window", screen_height)
+    dpg.set_item_pos("main_window", [0, 0])
 
-def setup_camera_ui(parent=None, ui_width=-1, ui_height=-1):
-    global camera_initialized
-    if camera_initialized:
-        return
-
-    if ui_width == -1:
-        ui_width = dpg.get_item_width(parent) or 500
-
-    if ui_height == -1:
-        ui_height = int(ui_width * CAMERA_HEIGHT / CAMERA_WIDTH)
-
-    black_frame = get_camera_frame()
-    black_frame = cv2.cvtColor(black_frame, cv2.COLOR_BGR2RGBA)
-    black_frame = np.flip(black_frame, 0) / 255.0
-
-    with dpg.texture_registry(show=False):
-        dpg.add_static_texture(CAMERA_WIDTH, CAMERA_HEIGHT, black_frame, tag=camera_texture_tag)
-
-    with dpg.child_window(label="Camera Feed",
-                          width=ui_width,
-                          height=ui_height + 40,
-                          parent=parent):
-        dpg.add_image(camera_texture_tag, tag=camera_image_tag,
-                      width=ui_width, height=ui_height)
-
-    camera_initialized = True
 
 
 ### Hardware Testing Panel
@@ -286,100 +321,79 @@ def build_gui():
             dpg.add_button(label="Cancel", callback=lambda: dpg.configure_item("session_prompt_popup", show=False))
 
     # === Main Window Layout ===
-    with dpg.window(label="Main Window", tag="main_window", show=False,
-                    no_resize=True, no_move=True,
-                    width=screen_width, height=screen_height):
-        with dpg.table(header_row=False):
-            # Define two fixed-width columns
-            dpg.add_table_column(width_fixed=True, init_width_or_weight=screen_width/2)  # LEFT SIDE
-            dpg.add_table_column(width_fixed=True, init_width_or_weight=screen_width/2)   # RIGHT SIDE
-            with dpg.table_row():
-                # ==== LEFT SIDE ====
-                with dpg.table_cell():
-                    # Trial Phase
-                    dpg.add_spacer(height=20)
-                    dpg.add_text("Trial Phase", indent=480)
-                    with dpg.group(horizontal=True):
-                        with dpg.table(width=1100, header_row=False):
-                            dpg.add_table_column()
-                            dpg.add_table_column()
-                            with dpg.table_row():
-                                for label in trial_labels[0]:
-                                    tag = f"button{label}"
-                                    dpg.add_button(
-                                        label=label,
-                                        tag=tag,
-                                        width=220,
-                                        height=60,
-                                        indent=150,
-                                        callback=lambda s=tag: toggle_trial_button(
-                                            s, buttons_trials, shared_states.active_theme, ser1, ser2
-                                        )
-                                    )
-                                    buttons_trials[tag] = {"checked": False}
+    with dpg.window(label="Main Window", tag="main_window", show=False, no_resize=True, no_move=True):
+        trial_button_width = 220
+        trial_button_spacing = 20
+        num_trial_buttons = 2  # Adjust based on your actual number of buttons
 
-                    # Reward Tables
-                    dpg.add_spacer(height=100)
-                    with dpg.group():
-                        dpg.add_text("Reward 1", indent=500)
-                        create_reward_table("button1", buttons_lickports1)
-                    with dpg.group():
-                        dpg.add_text("Reward 2", indent=500)
-                        create_reward_table("button2", buttons_lickports2)
+        # Calculate total width of all trial buttons + spacing
+        total_trial_buttons_width = num_trial_buttons * trial_button_width + (num_trial_buttons - 1) * trial_button_spacing
+        # Calculate the left indent to center the group
+        left_indent = (screen_width // 2 - total_trial_buttons_width) // 2
+        with dpg.group(horizontal=False):
+            # Trial Phase (centered)
+            dpg.add_spacer(height=50)
+            dpg.add_text("Trial Phase", indent=(screen_width // 4))  # Adjust indent as needed
+            with dpg.group(horizontal=True):
+                dpg.add_spacer(width=left_indent)
+                for label in trial_labels[0]:
+                    tag = f"button{label}"
+                    dpg.add_button(
+                        label=label,
+                        tag=tag,
+                        width=trial_button_width,
+                        height=60,
+                        callback=lambda s=tag: toggle_trial_button(
+                            s, buttons_trials, shared_states.active_theme, ser1, ser2
+                        )
+                    )
+                    buttons_trials[tag] = {"checked": False}
+                    if label != trial_labels[0][-1]:
+                        dpg.add_spacer(width=trial_button_spacing)
+                dpg.add_spacer(width=left_indent)
 
-                    # Sensor Plots
-                    dpg.add_text("Sensor Plots:")
-                    with dpg.table(header_row=False, resizable=False,
-                                   policy=dpg.mvTable_SizingFixedFit,
-                                   borders_innerV=True, borders_outerH=True,
-                                   width=screen_width - 100):
-                        cols = 4
-                        for _ in range(cols):
-                            dpg.add_table_column()
-                        for i in range(0, 16, cols):
-                            with dpg.table_row():
-                                for j in range(cols):
-                                    idx = i + j
-                                    if idx >= 16:
-                                        break
-                                    with dpg.table_cell():
-                                        create_sensor_plot(idx)
+            # Reward Tables (centered)
+            dpg.add_spacer(height=100)
+            with dpg.group():
+                dpg.add_text("Reward 1", indent=(screen_width // 4))  # Adjust indent as needed
+                create_reward_table("button1", buttons_lickports1)
+            with dpg.group():
+                dpg.add_text("Reward 2", indent=(screen_width // 4))  # Adjust indent as needed
+                create_reward_table("button2", buttons_lickports2)
 
-                # ==== RIGHT SIDE ====
-                with dpg.table_cell():
-                    right_width = screen_width // 2
-                    camera_ui_width = right_width - 40
-                    max_camera_height = int(screen_height * 0.6)  # max 60% screen height
-                    calculated_camera_height = int(camera_ui_width * CAMERA_HEIGHT / CAMERA_WIDTH) + 20
-                    camera_ui_height = min(calculated_camera_height, max_camera_height)
+            # Start/Stop Recording Buttons (centered)
+            rec_button_width = 200
+            rec_button_spacing = 50
 
-                    # Right side container as a child window to enable scrolling if needed
-                    with dpg.child_window(width=right_width, height=screen_height, autosize_y=False, border=False):
+            # Calculate total width of both buttons + spacing
+            total_rec_buttons_width = 2 * rec_button_width + rec_button_spacing
+            # Calculate the left indent to center the group
+            left_indent_rec = (screen_width // 2 - total_rec_buttons_width) // 2
+            dpg.add_spacer(height=50)
+            with dpg.group(horizontal=True):
+                dpg.add_spacer(width=left_indent_rec)
+                dpg.add_button(
+                    label="Start Recording",
+                    tag="start_recording_button",
+                    callback=start_recording_callback,
+                    width=rec_button_width,
+                    height=70
+                )
+                dpg.add_spacer(width=rec_button_spacing)
+                dpg.add_button(
+                    label="Stop Recording",
+                    tag="stop_recording_button",
+                    callback=stop_recording_callback,
+                    width=rec_button_width,
+                    height=70
+                )
+                dpg.add_spacer(width=left_indent_rec)
 
-                        # Camera feed (fixed height)
-                        setup_camera_ui(parent=dpg.last_container(), ui_width=camera_ui_width, ui_height=camera_ui_height - 40)
-
-                        dpg.add_spacer(height=10)
-
-                        # Controls child window: autosize height (no fixed height)
-                        with dpg.child_window(width=right_width, height=screen_height-camera_ui_height-150):
-                            # Center buttons horizontally
-                            with dpg.group(horizontal=True, horizontal_spacing=50):
-                                dpg.add_spacer(width=(right_width - 400) // 2)
-                                dpg.add_button(label="Start Recording", tag="start_recording_button",
-                                            callback=start_recording_callback, width=200, height=70)
-                                dpg.add_button(label="Stop Recording", tag="stop_recording_button",
-                                            callback=stop_recording_callback, width=200, height=70)
-                                dpg.add_spacer(width=(right_width - 400) // 2)
-
-
-                            # Protocol summary + hardware panel side by side
-                            with dpg.group(horizontal=True, horizontal_spacing=50):
-                                dpg.add_spacer(width=(right_width - 800) // 2)
-                                
-                                with dpg.child_window(width=400, height=500):
-                                    create_hardware_test_panel(dpg.last_container())
-
-                                with dpg.child_window(width=400, height=500, tag="protocol_summary_child_window"):
-                                    update_protocol_summary("protocol_summary_child_window")
-
+            # Protocol summary + hardware panel (centered)
+            dpg.add_spacer(height=50)
+            child_width = screen_width // 4
+            with dpg.group(horizontal=True):
+                with dpg.child_window(width=child_width, height=700):
+                    create_hardware_test_panel(dpg.last_container())
+                with dpg.child_window(width=child_width, height=700, tag="protocol_summary_child_window"):
+                    update_protocol_summary("protocol_summary_child_window")
