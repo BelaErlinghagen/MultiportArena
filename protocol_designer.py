@@ -41,6 +41,15 @@ def toggle_phase_length_settings():
         dpg.disable_item("trial_phase_length")
         dpg.disable_item("intertrial_phase_length")
 
+def on_num_rewards_changed(sender, app_data):
+    num_rewards = int(app_data)
+    if num_rewards == 1:
+        dpg.disable_item("pwm_reward2_input")
+        dpg.disable_item("reward2_probability_input")
+    else:
+        dpg.enable_item("pwm_reward2_input")
+        dpg.enable_item("reward2_probability_input")
+
 # ===========================
 # Save / Load
 # ===========================
@@ -86,7 +95,7 @@ def save_protocol():
         "experiment_type": dpg.get_value("experiment_type"),
         "protocol_name": dpg.get_value("protocol_name"),
         "Comments": dpg.get_value("protocol_comments"),
-        "num_rewards": int(dpg.get_value("num_rewards")),
+        "num_rewards": int(dpg.get_value("num_rewards_input")),
         "pwm_reward1": dpg.get_value("pwm_reward1"),
         "pwm_reward2": dpg.get_value("pwm_reward2"),
         "reward1_probability": dpg.get_value("reward1_probability"),
@@ -180,9 +189,18 @@ def create_protocol_designer_gui():
 
             # Rewards
             with dpg.tab(label="Rewards", tag="reward_settings_group"):
-                dpg.add_combo(label="Number of Rewards", items=["1", "2"], default_value=str(defaults["num_rewards"]), tag="num_rewards")
-                dpg.add_input_int(label="PWM Reward 1", default_value=defaults["pwm_reward1"], max_value=255, tag="pwm_reward1")
-                dpg.add_input_int(label="PWM Reward 2", default_value=defaults["pwm_reward2"], max_value=255, tag="pwm_reward2")
+                dpg.add_combo(
+                    label="Number of Rewards",
+                    items=["1", "2"],
+                    default_value="2",
+                    callback=on_num_rewards_changed,
+                    tag="num_rewards_input"
+                )
+                dpg.add_input_int(label="Reward 1 PWM", default_value=255, min_value=0, max_value=255, tag="pwm_reward1_input")
+                dpg.add_input_float(label="Reward 1 Probability", default_value=1.0, min_value=0.0, max_value=1.0, tag="reward1_probability_input")
+                dpg.add_input_int(label="Reward 2 PWM", default_value=255, min_value=0, max_value=255, tag="pwm_reward2_input")
+                dpg.add_input_float(label="Reward 2 Probability", default_value=1.0, min_value=0.0, max_value=1.0, tag="reward2_probability_input")
+                on_num_rewards_changed(None, dpg.get_value("num_rewards_input"))
                 with dpg.group(tag="led_configuration_group"):
                     dpg.add_combo(label="LED Mode", items=["single", "neighbor", "all"], default_value=defaults["led_configuration"]["mode"], tag="led_mode")
                 with dpg.group(horizontal=True):

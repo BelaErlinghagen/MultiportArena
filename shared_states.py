@@ -5,7 +5,7 @@ import dearpygui as dpg
 
 ser1 = serial.Serial('COM10', 115200, timeout=1)
 ser2 = serial.Serial('COM11', 115200, timeout=1)
-TARGET_FPS = 30
+TARGET_FPS = 60
 sensor_mapping = {
     "ser1": [1, 2],  # Maps ser1 values to sensors 1 and 2
     "ser2": [9],     # Maps ser2 values to sensor 9
@@ -80,7 +80,10 @@ protocol_template = {
 }
 
 # camera stuff
+import threading
 
+last_camera_frame = None
+camera_lock = threading.Lock()
 CAMERA_WIDTH = 1440
 CAMERA_HEIGHT = 810
 camera_texture_tag = "camera_texture"
@@ -101,3 +104,11 @@ label_table = [[1,2,3,4,5,6,7,8],[9,10,11,12,13,14,15,16]]
 trial_labels = [["Reward-Phase", "Intertrial-Phase"]]
 MAX_POINTS = 200
 UPDATE_PLOT_EVERY_N_FRAMES = 3
+# Plot buffering
+plot_update_buffer = [[] for _ in range(16)]  # same indexing as data_buffers
+PLOT_UPDATE_INTERVAL = 0.3
+last_plot_update_time = 0
+
+# Engine/GUI bridge buffers (thin, for plotting)
+gui_plot_buffers = None   # will be [deque] x16
+gui_time_buffers = None   # will be [deque] x16

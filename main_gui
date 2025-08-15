@@ -90,19 +90,25 @@ def main_loop():
             cv2.imwrite(img_filename, frame)
 
     # Plot updates
-    frame_counter += 1
-    if frame_counter % UPDATE_PLOT_EVERY_N_FRAMES == 0:
+    now = time.perf_counter()
+    if now - shared_states.last_plot_update_time >= shared_states.PLOT_UPDATE_INTERVAL:
         for i in range(16):
-            line_tag = f"sensor_plot_{i}_line"
-            xaxis_tag = f"sensor_plot_{i}_xaxis"
-            yaxis_tag = f"sensor_plot_{i}_yaxis"
-
-            if dpg.does_item_exist(line_tag) and timestamps[i]:
-                update_plot_series(line_tag, timestamps[i], data_buffers[i])
-                dpg.set_axis_limits(xaxis_tag, timestamps[i][0], timestamps[i][-1])
-                y_min = min(data_buffers[i]) if data_buffers[i] else 0
-                y_max = max(data_buffers[i]) if data_buffers[i] else 1
-                dpg.set_axis_limits(yaxis_tag, y_min, y_max + 1000)
+            if shared_states.plot_update_buffer[i]:
+                # Unpack buffered points
+                ts_points, val_points = zip(*shared_states.plot_update_buffer[i])
+                # Append to plot directly
+                line_tag = f"sensor_plot_{i}_line"
+                xaxis_tag = f"sensor_plot_{i}_xaxis"
+                yaxis_tag = f"sensor_plot_{i}_yaxis"
+                if dpg.does_item_exist(line_tag) and timestamps[i]:
+                    update_plot_series(line_tag, timestamps[i], data_buffers[i])
+                    dpg.set_axis_limits(xaxis_tag, timestamps[i][0], timestamps[i][-1])
+                    y_min = min(data_buffers[i]) if data_buffers[i] else 0
+                    y_max = max(data_buffers[i]) if data_buffers[i] else 1
+                    dpg.set_axis_limits(yaxis_tag, y_min, y_max + 1000)
+                # Clear buffer
+                shared_states.plot_update_buffer[i].clear()
+        shared_states.last_plot_update_time = now
 
     dpg.render_dearpygui_frame()
 

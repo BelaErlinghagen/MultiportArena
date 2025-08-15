@@ -55,10 +55,13 @@ def append_sensor_data(ts, values, port, sensor_mapping, timestamps, data_buffer
     for i, val in enumerate(values):
         sensor_id = sensor_mapping[port][i]
         idx = sensor_id - 1
+        # Store in main data arrays
         timestamps[idx].append(ts)
         shift_data_window(timestamps[idx], max_points)
         data_buffers[idx].append(val)
         shift_data_window(data_buffers[idx], max_points)
+        # Also store in plot update buffer
+        shared_states.plot_update_buffer[idx].append((ts, val))
 
 def show_main_window():
         dpg.hide_item("intro_window")
@@ -155,9 +158,12 @@ def update_protocol_summary(container_tag=None):
         num_rewards = protocol.get("num_rewards", 0)
         lines.append(f"Rewards: {num_rewards}")
         lines.append(f"Reward 1: PWM={protocol.get('pwm_reward1', 255)}, "
-                     f"Probability={protocol.get('reward1_probability', 1.0):.2f}")
-        lines.append(f"Reward 2: PWM={protocol.get('pwm_reward2', 255)}, "
-                     f"Probability={protocol.get('reward2_probability', 1.0):.2f}")
+                    f"Probability={protocol.get('reward1_probability', 1.0):.2f}")
+
+        if num_rewards == 2:
+            lines.append(f"Reward 2: PWM={protocol.get('pwm_reward2', 255)}, "
+                        f"Probability={protocol.get('reward2_probability', 1.0):.2f}")
+
         lines.append("")
 
         lines.append("LED configuration:")
